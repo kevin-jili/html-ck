@@ -10,10 +10,33 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#14100c;color:#f2e8da;
   font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  user-select:none;-webkit-user-select:none}
-#app{position:fixed;inset:0;display:flex;flex-direction:column}
+  user-select:none;-webkit-user-select:none;
+  overscroll-behavior:none;overscroll-behavior-x:contain;overscroll-behavior-y:contain;
+  touch-action:pan-y;-webkit-text-size-adjust:100%;position:fixed;inset:0}
+#app{position:fixed;inset:0;display:flex;flex-direction:column;touch-action:pan-y;overscroll-behavior-x:contain}
 button{font-family:inherit;font-size:15px;border:none;outline:none;cursor:pointer;touch-action:manipulation}
 .hidden{display:none!important}
+
+/* ---------- 沉浸模式：隐藏顶栏底栏，棋盘撑满 ---------- */
+#app.immersive .topbar{display:none}
+#app.immersive .bottombar{display:none}
+#app.immersive .status{padding:2px 10px;font-size:12px;min-height:20px}
+#app.immersive .caps{display:none}
+#app.immersive .boardwrap{padding:2px}
+
+/* ---------- 悬浮球 ---------- */
+#fs-dot{position:fixed;right:10px;width:52px;height:52px;border-radius:50%;
+  border:1.5px solid rgba(232,176,114,.72);background:rgba(232,176,114,.55);color:#2b1a06;
+  font-size:13px;font-weight:800;letter-spacing:0;line-height:1.12;z-index:9900;
+  display:none;flex-direction:column;align-items:center;justify-content:center;opacity:.88;
+  transition:opacity .5s ease,transform .16s ease,background .2s;cursor:pointer;
+  -webkit-tap-highlight-color:transparent;padding:0;touch-action:none;
+  box-shadow:0 4px 14px rgba(0,0,0,.45),inset 0 1px 2px rgba(255,255,255,.35)}
+#fs-dot.show{display:flex}
+#fs-dot span{display:block;line-height:1.12;white-space:nowrap}
+#fs-dot.dim{opacity:.28}
+#fs-dot.drag{transform:scale(1.08);opacity:1}
+#fs-dot.exit{background:rgba(226,84,68,.72);border-color:rgba(255,168,155,.8);color:#fff}
 
 /* ---------- 通用 ---------- */
 .topbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(6px + env(safe-area-inset-top)) 10px 6px;
@@ -71,7 +94,54 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 .modal .row{margin-top:12px}
 .msg{font-size:13px;color:#c9b8a0;line-height:1.6;margin:10px 0;min-height:20px;word-break:break-all}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:14%;background:rgba(30,24,18,.96);border:1px solid #6b5233;
-  padding:10px 16px;border-radius:10px;font-size:13px;z-index:80;max-width:80%;text-align:center}
+  padding:10px 16px;border-radius:10px;font-size:13px;z-index:80;max-width:80%;text-align:center;white-space:pre-line;line-height:1.5}
+
+/* ---------- 齿轮 ---------- */
+.gear{position:absolute;top:calc(8px + env(safe-area-inset-top));right:10px;width:34px;height:34px;
+  border-radius:50%;background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:17px;line-height:1;
+  display:flex;align-items:center;justify-content:center;padding:0;z-index:30;flex:0 0 auto}
+.gear:active{background:#55432f}
+.topbar .gear{position:static;width:32px;height:32px;font-size:16px;margin-left:4px}
+
+/* ---------- 设置抽屉 ---------- */
+.dmask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;opacity:0;pointer-events:none;transition:opacity .22s}
+.dmask.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:86%;max-width:340px;background:#1e1812;
+  border-left:1px solid #55432f;z-index:61;transform:translateX(100%);transition:transform .24s ease;
+  display:flex;flex-direction:column;overflow:hidden}
+.drawer.open{transform:translateX(0)}
+.dhead{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(12px + env(safe-area-inset-top)) 14px 12px;
+  border-bottom:1px solid #3a2e22}
+.dhead h3{margin:0;font-size:16px;color:#e8b872;flex:1;font-weight:600}
+.dbody{flex:1 1 auto;overflow-y:auto;padding:12px 14px calc(20px + env(safe-area-inset-bottom));
+  -webkit-overflow-scrolling:touch}
+.dgrp{margin-bottom:16px}
+.dgrp h4{margin:0 0 8px;font-size:13px;color:#c9a870;font-weight:600;letter-spacing:1px}
+.dit{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#2c2318;margin-bottom:7px}
+.dit .tt{flex:1;min-width:0}
+.dit .tt b{display:block;font-size:14px;font-weight:600;color:#f2e8da}
+.dit .tt span{display:block;font-size:11px;color:#9c8a76;margin-top:2px;line-height:1.45}
+.sw{flex:0 0 46px;width:46px;height:26px;border-radius:13px;background:#4a3c2c;position:relative;
+  transition:background .2s;border:1px solid #5d4a35}
+.sw.on{background:#a8642a;border-color:#c8813c}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+  background:#e8d5b0;transition:transform .2s}
+.sw.on::after{transform:translateX(20px)}
+.sw.dis{opacity:.35}
+.drng{flex:0 0 120px;display:flex;align-items:center;gap:8px}
+.drng input{flex:1;min-width:0;-webkit-appearance:none;appearance:none;height:4px;border-radius:2px;
+  background:#55432f;outline:none}
+.drng input::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;
+  background:#c8813c;cursor:pointer}
+.drng input::-moz-range-thumb{width:18px;height:18px;border-radius:50%;background:#c8813c;border:none;cursor:pointer}
+.drng i{flex:0 0 40px;font-style:normal;font-size:12px;color:#c9a870;text-align:right}
+.dact{width:100%;text-align:left;padding:11px 12px;border-radius:10px;background:#2c2318;
+  border:1px solid #55432f;color:#f2e8da;font-size:14px;margin-bottom:7px}
+.dact:active{background:#3d3022}
+.dact small{display:block;color:#9c8a76;font-size:11px;margin-top:3px;line-height:1.45}
+.dfoot{flex:0 0 auto;display:flex;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));
+  border-top:1px solid #3a2e22}
+.dfoot .btn{font-size:13px}
 </style>
 </head>
 <body>
@@ -106,58 +176,307 @@ function logEnv(){
 window.addEventListener('error', function(ev){ log('E','未捕获错误', { msg:ev.message, src:ev.filename, line:ev.lineno, col:ev.colno, stack: ev.error && ev.error.stack }); });
 window.addEventListener('unhandledrejection', function(ev){ log('E','未处理Promise拒绝', { reason: String(ev.reason), stack: ev.reason && ev.reason.stack }); });
 
-function logText(){
-  var s = '中国象棋·揭棋 运行日志\n';
-  s += '导出时间: ' + nowStr() + '\n';
-  s += 'UA: ' + navigator.userAgent + '\n';
-  s += '屏幕: ' + screen.width + 'x' + screen.height + ' dpr=' + (window.devicePixelRatio||1) + '\n';
-  s += '应用版本: ' + APP_VERSION + ' | 引擎版本: ' + ENGINE_VERSION + '\n';
-  s += '引擎: PikaJieQi WASM (单线程版) | 来源 ' + (ENGINE.sourceLabel||'-') + (ENGINE.fromCache?' (本地缓存)':' (网络下载)') + '\n';
-  s += '页面地址: ' + location.href.slice(0,160) + '\n';
-  s += '当前模式: ' + (G.mode||'-') + ' | 难度: ' + (G.level||'-') + ' | 房间: ' + (G.room||'-') + '\n';
-  s += '棋局步数: ' + (G.state ? G.state.ply : '-') + '\n';
-  if(G.state){ try{ s += '当前FEN: ' + Rules.toFen(G.state, null) + '\n'; }catch(e){ s += '当前FEN: <生成失败 '+e.message+'>\n'; } }
-  s += '=' .repeat(46) + '\n\n';
-  for(var i=0;i<LOG.length;i++){
-    var e=LOG[i];
-    s += '[' + e.t + '][' + e.lv + '] ' + e.m;
-    if(e.d !== undefined) s += '\n      ' + (typeof e.d === 'string' ? e.d : JSON.stringify(e.d));
-    s += '\n';
-  }
-  return s;
-}
-function copyAndExportLog(){
-  var txt = logText();
-  var okCopy = false;
-  try{
-    if(navigator.clipboard && navigator.clipboard.writeText){
-      navigator.clipboard.writeText(txt).then(function(){ toast('日志已复制 + TXT已导出'); },
-        function(){ toast('复制失败，已导出TXT'); });
-      okCopy = true;
-    }
-  }catch(_){}
-  if(!okCopy){
+/* ---------------------------- 音效（Web Audio 实时合成，无音频文件） ---------------------------- */
+var Snd = {
+  ctx:null, master:null, noiseBuf:null,
+  unlock: function(){
     try{
-      var ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.left='-9999px';
-      document.body.appendChild(ta); ta.select();
-      okCopy = document.execCommand('copy');
-      document.body.removeChild(ta);
-      toast(okCopy ? '日志已复制 + TXT已导出' : '复制失败，已导出TXT');
-    }catch(_){ toast('已导出TXT'); }
-  }
-  // 导出 TXT
+      if(!this.ctx){
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        this.ctx = new AC();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = (ST.volume/100) * 0.9;
+        this.master.connect(this.ctx.destination);
+      }
+      if(this.ctx.state === 'suspended') this.ctx.resume();
+    }catch(e){ log('W','音频初始化失败',{msg:e.message}); }
+  },
+  setVolume: function(){ try{ if(this.master) this.master.gain.value = (ST.volume/100)*0.9; }catch(e){} },
+  tone: function(o){
+    if(!ST.sound || !this.ctx) return;
+    try{
+      var t0 = this.ctx.currentTime + (o.delay||0);
+      var osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = o.type || 'sine';
+      osc.frequency.setValueAtTime(o.f, t0);
+      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20,o.f2), t0+o.dur);
+      var peak = (o.gain==null ? 0.25 : o.gain);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0+Math.min(0.02, o.dur*0.25));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
+      var node = osc;
+      if(o.lp){ var f=this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=o.lp; node.connect(f); node=f; }
+      node.connect(g); g.connect(this.master);
+      osc.start(t0); osc.stop(t0+o.dur+0.05);
+    }catch(e){}
+  },
+  noise: function(o){
+    if(!ST.sound || !this.ctx) return;
+    try{
+      var t0 = this.ctx.currentTime + (o.delay||0);
+      var len = Math.max(1, Math.floor(this.ctx.sampleRate * o.dur));
+      if(!this.noiseBuf || this.noiseBuf.length < len){
+        this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        var dd = this.noiseBuf.getChannelData(0);
+        for(var i=0;i<len;i++) dd[i] = Math.random()*2-1;
+      }
+      var src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+      var f = this.ctx.createBiquadFilter(); f.type = o.hp ? 'highpass' : 'lowpass';
+      f.frequency.value = o.freq || 1000;
+      var g = this.ctx.createGain();
+      g.gain.setValueAtTime(o.gain==null?0.3:o.gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
+      src.connect(f); f.connect(g); g.connect(this.master);
+      src.start(t0); src.stop(t0+o.dur+0.02);
+    }catch(e){}
+  },
+  /* --- 具体音效 --- */
+  tap:    function(){ this.unlock(); this.tone({f:1180,f2:900,dur:0.05,type:'sine',gain:0.12}); },
+  move:   function(){ this.unlock(); this.noise({dur:0.055,freq:1800,hp:true,gain:0.34}); this.tone({f:220,f2:110,dur:0.1,type:'sine',gain:0.30}); },
+  reveal: function(){ this.unlock();
+            this.noise({dur:0.07,freq:3000,hp:true,gain:0.20});
+            this.tone({f:1046,dur:0.20,type:'triangle',gain:0.24});
+            this.tone({f:1568,dur:0.26,type:'sine',gain:0.16,delay:0.05}); },
+  capture:function(){ this.unlock();
+            this.noise({dur:0.09,freq:900,gain:0.30});
+            this.tone({f:180,f2:90,dur:0.16,type:'sawtooth',gain:0.20,lp:1200}); },
+  check:  function(){ this.unlock();
+            this.tone({f:880,dur:0.10,type:'square',gain:0.16});
+            this.tone({f:1174,dur:0.14,type:'square',gain:0.14,delay:0.11}); },
+  undo:   function(){ this.unlock(); this.tone({f:700,f2:380,dur:0.12,type:'triangle',gain:0.16}); },
+  connect:function(){ this.unlock();
+            this.tone({f:523,dur:0.10,type:'triangle',gain:0.20});
+            this.tone({f:784,dur:0.14,type:'triangle',gain:0.20,delay:0.11}); },
+  win:    function(){ this.unlock();
+            [523,659,784,1046].forEach(function(f,i){ Snd.tone({f:f,dur:0.22,type:'triangle',gain:0.22,delay:i*0.13}); }); },
+  lose:   function(){ this.unlock();
+            this.tone({f:392,dur:0.26,type:'sawtooth',gain:0.18,lp:900});
+            this.tone({f:294,dur:0.34,type:'sawtooth',gain:0.16,delay:0.20,lp:800}); },
+  draw:   function(){ this.unlock(); this.tone({f:440,dur:0.20,type:'square',gain:0.14}); }
+};
+
+/* ---------------------------- 震动 ---------------------------- */
+var Hap = {
+  ok: (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'),
+  fire: function(pattern){
+    if(!ST.vibrate || !this.ok) return;
+    try{
+      var k = 0.35 + 1.3*(ST.vibIntensity/100);
+      navigator.vibrate(pattern.map(function(d){ return Math.max(8, Math.round(d*k)); }));
+    }catch(e){}
+  },
+  tap:      function(){ this.fire([10]); },
+  move:     function(){ this.fire([16]); },
+  reveal:   function(){ this.fire([28]); },
+  capture:  function(){ this.fire([40]); },
+  check:    function(){ this.fire([30,40,30]); },
+  undo:     function(){ this.fire([26]); },
+  connect:  function(){ this.fire([30,40,30]); },
+  win:      function(){ this.fire([70,60,70,60,150]); },
+  lose:     function(){ this.fire([150,90,150]); }
+};
+
+/* ---------------------------- 设置（持久化） ---------------------------- */
+var SETTINGS_DEFAULTS = { sound:true, volume:100, vibrate:true, vibIntensity:100, hapticsOnMove:true, fsDot:true };
+var ST = {};
+for(var _k in SETTINGS_DEFAULTS) ST[_k] = SETTINGS_DEFAULTS[_k];
+var PREF_KEY = 'jieqi-prefs-v1';
+function savePrefs(){
   try{
-    var d=new Date(); function p(n){return n<10?'0'+n:''+n;}
-    var name = '揭棋日志_' + d.getFullYear()+p(d.getMonth()+1)+p(d.getDate())+'_'+p(d.getHours())+p(d.getMinutes())+p(d.getSeconds()) + '.txt';
-    var blob = new Blob(['\ufeff'+txt], {type:'text/plain;charset=utf-8'});
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(blob); a.download = name;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ URL.revokeObjectURL(a.href); document.body.removeChild(a); }, 1500);
-    log('I','导出日志', { file:name, bytes:blob.size, lines:LOG.length });
-  }catch(e){ log('E','导出TXT失败', { msg:e.message }); toast('导出TXT失败'); }
+    var o={}; Object.keys(SETTINGS_DEFAULTS).forEach(function(k){ o[k]=ST[k]; });
+    localStorage.setItem(PREF_KEY, JSON.stringify(o));
+  }catch(e){}
+}
+function loadPrefs(){
+  try{
+    var s2 = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    Object.keys(SETTINGS_DEFAULTS).forEach(function(k){ if(s2[k] !== undefined) ST[k] = s2[k]; });
+  }catch(e){}
+}
+function resetPrefs(){
+  Object.keys(SETTINGS_DEFAULTS).forEach(function(k){ ST[k] = SETTINGS_DEFAULTS[k]; });
+  savePrefs(); Snd.setVolume(); log('I','设置已恢复默认');
+}
+loadPrefs();
+
+var LOG_MODE_KEY = 'jieqi-log-mode-v1';
+function logModeGet(){
+  try{ var v = localStorage.getItem(LOG_MODE_KEY); if(v==='brief'||v==='full') return v; }catch(e){}
+  return 'brief';
+}
+function logModeSet(m){ try{ localStorage.setItem(LOG_MODE_KEY, m); }catch(e){} }
+function logModeName(m){ return m==='brief' ? '极简' : '完整'; }
+
+function envLines(){
+  var L=[];
+  L.push('版本: ' + APP_VERSION + '   引擎: ' + ENGINE_VERSION + '   导出: ' + nowStr());
+  L.push('页面: ' + location.href.slice(0,160));
+  L.push('协议: ' + location.protocol + '   在线: ' + navigator.onLine);
+  L.push('UA: ' + navigator.userAgent);
+  L.push('语言: ' + navigator.language + '   时区: ' + (function(){ try{ return Intl.DateTimeFormat().resolvedOptions().timeZone; }catch(e){ return '?'; } })());
+  L.push('屏幕: ' + screen.width + 'x' + screen.height + '   DPR: ' + (window.devicePixelRatio||1) +
+         '   视口: ' + innerWidth + 'x' + innerHeight + '   比例: ' + (innerHeight/innerWidth).toFixed(3));
+  L.push('核心: ' + (navigator.hardwareConcurrency || '未知') + '   内存: ' + (navigator.deviceMemory || '未知') + 'GB');
+  L.push('震动API: ' + (typeof navigator.vibrate === 'function' ? '支持' : '不支持（iPhone 无此接口）'));
+  L.push('音频: ' + (Snd.ctx ? ('已初始化 ' + Snd.ctx.state) : '未初始化'));
+  L.push('全屏: ' + (FS_LOG || '本次未触发') + '   沉浸中: ' + (fsIsImmersive() ? '是' : '否') + '   原生全屏: ' + (fsIsOn() ? '是' : '否'));
+  L.push('返回锁: ' + (Guard.locked ? '已锁（对局中）' : '未锁'));
+  L.push('引擎状态: ' + (ENGINE.worker ? '已就绪' : '未加载') + '   来源: ' + (ENGINE.sourceLabel||'-') +
+         (ENGINE.fromCache ? '（本地缓存）' : '（网络下载）'));
+  L.push('对局: 模式=' + (G.mode||'-') + ' 难度=' + (G.level||'-') + ' 房间=' + (G.room||'-') +
+         ' 步数=' + (G.state ? G.state.ply : '-'));
+  L.push('设置: ' + Object.keys(SETTINGS_DEFAULTS).map(function(k){ return k+'='+ST[k]; }).join('  '));
+  return L;
 }
 
+/* 极简：环境 + 错误信息，最短 */
+function logBrief(){
+  var L = ['===== 中国象棋·揭棋 诊断日志（极简版） ====='];
+  L = L.concat(envLines());
+  L.push('');
+  L.push('--- 错误 / 警告 ---');
+  var bad = LOG.filter(function(e){ return e.lv==='E' || e.lv==='W'; });
+  if(!bad.length) L.push('（无）');
+  bad.forEach(function(e){
+    L.push('[' + e.t + '][' + e.lv + '] ' + e.m + (e.d!==undefined ? (' :: ' + (typeof e.d==='string'?e.d:JSON.stringify(e.d))) : ''));
+  });
+  L.push('');
+  L.push('--- 关键操作 ---');
+  var act = LOG.filter(function(e){ return e.lv==='I'; });
+  act.slice(-40).forEach(function(e){
+    L.push('[' + e.t + '] ' + e.m + (e.d!==undefined ? (' :: ' + (typeof e.d==='string'?e.d:JSON.stringify(e.d))) : ''));
+  });
+  L.push('');
+  L.push('（共 ' + LOG.length + ' 条记录，此处显示错误警告 ' + bad.length + ' 条 + 最近操作 ' + Math.min(40,act.length) + ' 条）');
+  return L.join('\n');
+}
+
+/* 完整：全部条目 */
+function logFull(){
+  var L = ['===== 中国象棋·揭棋 诊断日志（完整版） ====='];
+  L = L.concat(envLines());
+  if(G.state){
+    try{ L.push('当前FEN: ' + Rules.toFen(G.state, null)); }catch(e){ L.push('当前FEN: <生成失败>'); }
+    try{
+      var b='';
+      for(var r=9;r>=0;r--){
+        for(var c=0;c<9;c++){
+          var pc=G.state.board[r*9+c];
+          b += !pc ? '.' : (pc.faceDown ? (pc.color==='red'?'X':'x') : Rules.ROLE_CH[pc.role][0][pc.color==='red'?'toUpperCase':'toLowerCase']());
+        }
+        b += '\n';
+      }
+      L.push('棋盘:\n' + b);
+    }catch(e){}
+  }
+  L.push('');
+  L.push('--- 全部记录（' + LOG.length + ' 条）---');
+  for(var i=0;i<LOG.length;i++){
+    var e=LOG[i];
+    L.push('[' + e.t + '][' + e.lv + '] ' + e.m + (e.d!==undefined ? ('\n      ' + (typeof e.d==='string'?e.d:JSON.stringify(e.d))) : ''));
+  }
+  return L.join('\n');
+}
+function logText(m){ return (m==='full') ? logFull() : logBrief(); }
+
+/* 复制：优先 Clipboard API，回退 execCommand */
+function copyText(text){
+  return new Promise(function(resolve){
+    var done = function(ok){ resolve(!!ok); };
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(function(){ done(true); }, function(){ fallback(); });
+    } else fallback();
+    function fallback(){
+      try{
+        var ta=document.createElement('textarea');
+        ta.value=text; ta.style.position='fixed'; ta.style.left='-9999px';
+        document.body.appendChild(ta); ta.focus(); ta.select();
+        var ok = document.execCommand && document.execCommand('copy');
+        document.body.removeChild(ta); done(ok);
+      }catch(e){ done(false); }
+    }
+  });
+}
+
+/* 导出 TXT：始终完整明文，抗传输损坏 */
+function exportLogTxt(){
+  var text = logFull();
+  try{
+    var d=new Date(); function p2(n){return n<10?'0'+n:''+n;}
+    var nm = '揭棋日志_' + d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+'_'+p2(d.getHours())+p2(d.getMinutes())+p2(d.getSeconds()) + '.txt';
+    var blob = new Blob(['\ufeff'+text], {type:'text/plain;charset=utf-8'});
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = nm;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{ URL.revokeObjectURL(a.href); a.remove(); }catch(e){} }, 2000);
+    log('I','导出日志TXT', { file:nm, chars:text.length });
+    toast('日志已导出 TXT（完整版 · ' + text.length + ' 字符）\n在下载目录 / 文件管理里查看', 3600);
+  }catch(e){ log('E','导出TXT失败',{msg:e.message}); toast('导出失败'); }
+}
+
+/* 日志弹窗：选档位即复制，另可下载 TXT */
+function openLog(){
+  if(document.getElementById('log-mask')) return;
+  var sel = logModeGet();
+  var opts = [
+    { k:'brief', n:'极简', d:'环境 · 设置 · 错误警告 · 最近操作，短小精悍' },
+    { k:'full',  n:'完整', d:'含全部记录与当前棋盘，排查细节时用（推荐发我这个）' }
+  ];
+  opts.forEach(function(o){ o.t = logText(o.k); });
+  var btns=[];
+  function paint(){
+    btns.forEach(function(rec){
+      var on = (rec.o.k === sel);
+      rec.b.style.borderColor = on ? '#c8813c' : '#55432f';
+      rec.b.style.background  = on ? '#4a3520' : '#2c2318';
+      rec.t1.style.color      = on ? '#ffd479' : '#f2e8da';
+      rec.t1.textContent = rec.o.n + (on ? '（已选中）' : '') + ' · 约 ' + rec.o.t.length + ' 字符';
+    });
+    var tip = document.getElementById('log-tip');
+    if(tip) tip.textContent = '点档位即复制。下面的「下载 TXT」始终导出完整明文版。';
+  }
+  var mask = el('div','mask'); mask.id='log-mask';
+  var m = el('div','modal');
+  var h = el('h3','','诊断日志 · 选一种');
+  m.appendChild(h);
+  opts.forEach(function(o){
+    var b = el('button','');
+    b.style.cssText='display:block;width:100%;text-align:left;margin:0 0 8px;padding:10px 12px;border-radius:10px;'+
+      'font-size:13px;line-height:1.45;border:1px solid #55432f;background:#2c2318;color:#f2e8da;';
+    var t1 = el('div','',''); t1.style.cssText='font-size:14px;font-weight:700;';
+    var t2 = el('div','', o.d); t2.style.cssText='font-size:12px;opacity:.72;margin-top:3px;line-height:1.45;';
+    b.appendChild(t1); b.appendChild(t2);
+    b.onclick = function(){
+      sel = o.k; logModeSet(o.k); paint();
+      copyText(o.t).then(function(ok){
+        if(ok){ toast('已复制「'+o.n+'」日志 · '+o.t.length+' 字符\n发给开发者即可', 3400); log('I','复制诊断日志',{mode:o.k,chars:o.t.length}); }
+        else toast('复制失败，请改用下面的「下载 TXT」', 2800);
+      });
+      Snd.tap(); Hap.tap();
+    };
+    btns.push({b:b, t1:t1, o:o});
+    m.appendChild(b);
+  });
+  var tip = el('div','',''); tip.id='log-tip';
+  tip.style.cssText='font-size:12px;opacity:.72;margin:2px 0 10px;line-height:1.5;';
+  m.appendChild(tip);
+  var row = el('div','row');
+  var bd = el('button','btn pri','下载 TXT');
+  bd.onclick = function(){ exportLogTxt(); mask.remove(); };
+  var bc = el('button','btn','关闭');
+  bc.onclick = function(){ mask.remove(); };
+  row.appendChild(bc); row.appendChild(bd);
+  m.appendChild(row);
+  mask.appendChild(m);
+  mask.onclick = function(ev){ if(ev.target === mask) mask.remove(); };
+  document.body.appendChild(mask);
+  paint();
+  log('I','打开日志弹窗');
+}
+
+/* 兼容旧调用名 */
+function copyAndExportLog(){ openLog(); }
 /* ---------------------------- 工具 ---------------------------- */
 function $(sel){ return document.querySelector(sel); }
 function el(tag, cls, txt){ var e=document.createElement(tag); if(cls)e.className=cls; if(txt!=null)e.textContent=txt; return e; }
@@ -537,8 +856,271 @@ var Rules = (function(){
 /* =========================================================================
    引擎客户端（PikaJieQi WASM，三条下载线路）
    ========================================================================= */
+/* ---------------------------- 防左右滑返回 ---------------------------- */
+var SwipeGuard = {
+  startX:0, startY:0, active:false,
+  init: function(){
+    var self=this;
+    // 全局 touchmove 拦截：横向位移 > 竖向位移 时吞掉手势
+    window.addEventListener('touchmove', function(e){
+      if(!self.active || !e.touches || e.touches.length!==1) return;
+      var t=e.touches[0];
+      var dx = t.clientX - self.startX, dy = t.clientY - self.startY;
+      if(Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 12){
+        if(e.cancelable) e.preventDefault();
+      }
+    }, {passive:false});
+    window.addEventListener('touchstart', function(e){
+      if(!e.touches || e.touches.length!==1) return;
+      self.active=true;
+      self.startX=e.touches[0].clientX; self.startY=e.touches[0].clientY;
+    }, {passive:true});
+    window.addEventListener('touchend', function(){ self.active=false; }, {passive:true});
+    window.addEventListener('touchcancel', function(){ self.active=false; }, {passive:true});
+    // 桌面端手势
+    try{
+      window.addEventListener('gesturestart', function(e){ e.preventDefault(); }, {passive:false});
+    }catch(e){}
+    log('I','已启用防左右滑');
+  }
+};
+
+/* ---------------------------- 返回键锁（仅对局页） ---------------------------- */
+var Guard = {
+  locked:false, pushed:false, depth:0,
+  onPop: null, onKey: null,
+  lock: function(){
+    if(this.locked) return;
+    this.locked = true;
+    var self=this;
+    if(!this.pushed){
+      try{ history.pushState({jq:1}, '', location.href); this.pushed=true; this.depth=1; }
+      catch(e){ log('W','压入历史失败',{msg:e.message}); }
+    }
+    if(!this.onPop) this.onPop = function(e){
+      try{ history.pushState({jq:1}, '', location.href); Guard.depth++; }catch(err){}
+      log('I','已拦截浏览器返回（对局中）');
+      toast('对局进行中已锁定返回\n点左上角「退出」可返回上级', 2200);
+    };
+    if(!this.onKey) this.onKey = function(e){
+      if(e.key === 'Backspace' || (e.key === 'ArrowLeft' && (e.altKey || e.metaKey))){
+        var t = e.target, tag = t && t.tagName;
+        if(tag === 'INPUT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        toast('对局进行中已锁定返回\n点左上角「退出」可返回上级', 2200);
+      }
+    };
+    window.addEventListener('popstate', this.onPop, false);
+    window.addEventListener('keydown', this.onKey, true);
+    log('I','返回已锁死（对局页）');
+  },
+  unlock: function(){
+    if(!this.locked) return;
+    this.locked = false;
+    if(this.onPop) window.removeEventListener('popstate', this.onPop, false);
+    if(this.onKey) window.removeEventListener('keydown', this.onKey, true);
+    var d = this.depth;
+    this.depth = 0; this.pushed = false;
+    if(d === 1){
+      setTimeout(function(){ try{ history.go(-1); }catch(e){} }, 80);
+    }
+    log('I','返回已解锁', { cleared:d });
+  },
+  // 静默解锁：不清垫层（页面内部跳转用）
+  release: function(){
+    if(!this.locked) return;
+    this.locked = false;
+    if(this.onPop) window.removeEventListener('popstate', this.onPop, false);
+    if(this.onKey) window.removeEventListener('keydown', this.onKey, true);
+    log('I','返回锁已释放（保留垫层）');
+  }
+};
+
+/* ---------------------------- 悬浮球 + 全屏 ---------------------------- */
+var FS_LOG = '', FS_TRY = '', fsDotTimer = 0;
+function fsIsOn(){ return !!(document.fullscreenElement || document.webkitFullscreenElement); }
+function fsIsImmersive(){ var a=document.getElementById('app'); return !!(a && a.classList.contains('immersive')); }
+
+function fsBallShow(v){
+  var d = document.getElementById('fs-dot'); if(!d) return null;
+  var show = !!v && (ST.fsDot !== false);
+  d.classList.toggle('show', show);
+  return d;
+}
+function fsBall(){
+  var d = document.getElementById('fs-dot'); if(!d) return null;
+  var on = fsIsOn() || fsIsImmersive();
+  d.innerHTML = on ? '<span>退出</span><span>全屏</span>' : '<span>进入</span><span>全屏</span>';
+  d.classList.toggle('exit', on);
+  try{ d.setAttribute('aria-label', on ? '退出全屏' : '进入全屏'); }catch(e){}
+  clearTimeout(fsDotTimer);
+  if(!d.classList.contains('drag')) d.classList.remove('dim');
+  fsDotTimer = setTimeout(function(){
+    var e = document.getElementById('fs-dot');
+    if(e && !e.classList.contains('drag')) e.classList.add('dim');
+  }, 3000);
+  return d;
+}
+var FS_BALL_KEY = 'jieqi-fsball-pos';
+function fsBallClamp(){
+  var d = document.getElementById('fs-dot'); if(!d) return;
+  var w = d.offsetWidth || 52, h = d.offsetHeight || 52;
+  var maxX = Math.max(1, innerWidth - w), maxY = Math.max(1, innerHeight - h);
+  var x = Math.min(maxX, Math.max(0, parseFloat(d.style.left) || (maxX - 0)));
+  var y = Math.min(maxY, Math.max(0, parseFloat(d.style.top)  || (maxY - 70)));
+  d.style.left = x + 'px'; d.style.top = y + 'px';
+}
+function fsBallSave(){
+  var d = document.getElementById('fs-dot'); if(!d || !d.style.left) return;
+  var w = d.offsetWidth || 52, h = d.offsetHeight || 52;
+  var maxX = Math.max(1, innerWidth - w), maxY = Math.max(1, innerHeight - h);
+  var rx = (parseFloat(d.style.left)||0) / maxX, ry = (parseFloat(d.style.top)||0) / maxY;
+  try{ localStorage.setItem(FS_BALL_KEY, JSON.stringify({x:rx, y:ry})); }catch(e){}
+}
+function fsBallLoad(){
+  var d = document.getElementById('fs-dot'); if(!d) return;
+  var w = d.offsetWidth || 52, h = d.offsetHeight || 52;
+  var maxX = Math.max(1, innerWidth - w), maxY = Math.max(1, innerHeight - h);
+  var p = null;
+  try{ p = JSON.parse(localStorage.getItem(FS_BALL_KEY) || 'null'); }catch(e){}
+  if(p){
+    d.style.left = Math.round(p.x * maxX) + 'px';
+    d.style.top  = Math.round(p.y * maxY) + 'px';
+  } else {
+    // 默认：右下角，位于底栏上方 10px（避开「认输」按钮）
+    d.style.left = Math.round(maxX - 0) + 'px';
+    d.style.top  = Math.round(maxY - 70) + 'px';
+  }
+}
+function fsBallBind(){
+  var d = document.getElementById('fs-dot'); if(!d) return;
+  fsBallLoad(); fsBallClamp();
+  var sx=0, sy=0, ox=0, oy=0, moved=false, timer=0;
+  function down(e){
+    var t = (e.touches && e.touches[0]) || e;
+    sx = t.clientX; sy = t.clientY;
+    ox = parseFloat(d.style.left)||0; oy = parseFloat(d.style.top)||0;
+    moved = false;
+    d.classList.add('drag'); d.classList.remove('dim');
+    timer = setTimeout(function(){ if(!moved){ moved='long'; } }, 600);
+    if(e.cancelable) e.preventDefault();
+  }
+  function move(e){
+    var t = (e.touches && e.touches[0]) || e;
+    var dx = t.clientX - sx, dy = t.clientY - sy;
+    if(!moved && Math.abs(dx)+Math.abs(dy) > 6) moved = true;
+    d.style.left = (ox + dx) + 'px';
+    d.style.top  = (oy + dy) + 'px';
+    if(e.cancelable) e.preventDefault();
+  }
+  function up(){
+    clearTimeout(timer);
+    d.classList.remove('drag');
+    fsBallClamp(); fsBallSave(); fsBall();
+    if(!moved){ fsBallTap(); }
+    else if(moved === 'long'){ /* 长按：清位置回默认 */ try{ localStorage.removeItem(FS_BALL_KEY); }catch(e){} fsBallLoad(); fsBallClamp(); toast('悬浮球已复位'); }
+  }
+  d.addEventListener('touchstart', down, {passive:false});
+  d.addEventListener('touchmove',  move, {passive:false});
+  d.addEventListener('touchend',   up);
+  d.addEventListener('touchcancel', up);
+  d.addEventListener('mousedown',  down);
+  window.addEventListener('mousemove', function(e){ if(d.classList.contains('drag')) move(e); });
+  window.addEventListener('mouseup',  function(){ if(d.classList.contains('drag')) up(); });
+}
+
+function fsPaint(on){
+  var app = document.getElementById('app'); if(!app) return;
+  app.classList.toggle('immersive', !!on);
+  fsBall();
+  setTimeout(function(){
+    try{ if(document.querySelector('canvas')){ Board.resize(); Board.draw(); } }catch(e){}
+  }, 60);
+}
+function fsSync(){ fsPaint(fsIsOn()); }
+
+function fsNativeTry(ok, bad){
+  var el = document.documentElement;
+  var list = [
+    ['requestFullscreen', el.requestFullscreen],
+    ['webkitRequestFullscreen', el.webkitRequestFullscreen],
+    ['webkitRequestFullScreen', el.webkitRequestFullScreen],
+    ['msRequestFullscreen', el.msRequestFullscreen],
+    ['mozRequestFullScreen', el.mozRequestFullScreen]
+  ];
+  var i = 0;
+  function next(){
+    if(i >= list.length){ bad('内核不支持'); return; }
+    var nm = list[i][0], fn = list[i][1];
+    i++;
+    if(typeof fn !== 'function'){ next(); return; }
+    FS_TRY = nm;
+    var q = null;
+    try{ q = fn.call(el, { navigationUI: 'hide' }); }catch(e){ next(); return; }
+    var check = function(){ if(fsIsOn()) ok(nm); else next(); };
+    if(q && q.then) q.then(function(){ setTimeout(check, 60); }).catch(function(){ next(); });
+    else setTimeout(check, 160);
+  }
+  next();
+}
+function fsFallback(reason, already){
+  if(fsIsOn()){ fsSync(); return; }
+  fsPaint(true);
+  try{ window.scrollTo(0, 1); }catch(e){}
+  try{ document.documentElement.scrollTop = 1; }catch(e){}
+  if(already) return;
+  log('I','真全屏不可用，已切换沉浸模式', { reason: reason||'未知' });
+  toast('已隐藏顶栏底栏 · 棋盘撑满');
+  var KEY = 'jieqi-fs-tip-shown';
+  var shown = false;
+  try{ shown = localStorage.getItem(KEY) === '1'; }catch(e){}
+  if(!shown){
+    setTimeout(function(){
+      toast('想要无地址栏的真全屏：浏览器菜单 →「添加到主屏幕」，再从桌面图标打开', 3400);
+      try{ localStorage.setItem(KEY, '1'); }catch(e){}
+    }, 2300);
+  }
+}
+function fsEnter(){
+  Snd.tap(); Hap.tap();
+  var already = fsIsImmersive();
+  var handled = false;
+  function ok(nm){
+    if(handled) return; handled = true;
+    FS_LOG = '原生全屏成功 · ' + nm;
+    log('I','全屏', { result: FS_LOG });
+    fsSync();
+  }
+  function bad(why){
+    if(handled) return; handled = true;
+    FS_LOG = '降级沉浸（' + why + '）';
+    fsFallback(why, already);
+  }
+  try{ fsNativeTry(ok, bad); }catch(e){ bad('调用异常'); }
+  setTimeout(function(){
+    if(handled) return;
+    if(fsIsOn()) ok(FS_TRY || 'requestFullscreen');
+    else bad('无响应');
+  }, 600);
+}
+function fsExit(){
+  Snd.tap(); Hap.tap();
+  try{
+    if(document.fullscreenElement && document.exitFullscreen) document.exitFullscreen();
+    else if(document.webkitFullscreenElement && document.webkitExitFullscreen) document.webkitExitFullscreen();
+  }catch(e){}
+  fsPaint(false);
+}
+function fsToggle(){ if(fsIsOn() || fsIsImmersive()) fsExit(); else fsEnter(); }
+function fsBallTap(){
+  Snd.tap(); Hap.tap();
+  var on = fsIsOn() || fsIsImmersive();
+  log('I','悬浮球', { action: on ? '退出' : '进入' });
+  fsToggle();
+}
+
 /* ---------------------------- 版本 ---------------------------- */
-var APP_VERSION    = '1.0.0';
+var APP_VERSION    = '1.2.0';
 var ENGINE_VERSION = '8420b6c6';     // 引擎 wasm sha256 前 8 位
 
 /* ---------------------------- 引擎文件与下载源 ---------------------------- */
@@ -972,7 +1554,9 @@ var Board = {
   init(cv){ this.cv=cv; this.ctx=cv.getContext('2d'); },
   resize(){
     var wrap = this.cv.parentNode;
-    var aw = wrap.clientWidth - 12, ah = wrap.clientHeight - 12;
+    // 沉浸模式下榨取边距，让棋盘尽量大
+    var mg = (document.getElementById('app') && document.getElementById('app').classList.contains('immersive')) ? 3 : 12;
+    var aw = wrap.clientWidth - mg, ah = wrap.clientHeight - mg;
     if(aw<=0||ah<=0) return;
     var cell = Math.floor(Math.min(aw/9, ah/10));
     if(cell<8) cell=8;
@@ -1134,7 +1718,11 @@ var Board = {
    ========================================================================= */
 var app = document.getElementById('app');
 
-function clearApp(){ app.innerHTML=''; }
+function clearApp(){
+  app.innerHTML='';
+  // 离开任何页面都先隐藏悬浮球（仅对局页会重新显示）
+  try{ fsBallShow(false); }catch(e){}
+}
 
 function renderHome(){
   clearApp();
@@ -1143,30 +1731,212 @@ function renderHome(){
   p.appendChild(el('div','logo','揭 棋'));
   p.appendChild(el('div','sub','中国象棋变体 · 暗子按格位走子<br>走后翻开 · 相仕可过河<br>AI：PikaJieQi WASM'));
   var b1 = el('button','big','人机对局'); b1.appendChild(el('span','d','五档难度 · 引擎本地计算'));
-  b1.onclick = function(){ log('I','进入人机设置'); renderPveSetup(); };
+  b1.onclick = function(){ Snd.tap(); Hap.tap(); log('I','进入人机设置'); renderPveSetup(); };
   var b2 = el('button','big','联机对局'); b2.appendChild(el('span','d','房间号对战 · P2P 直连'));
-  b2.onclick = function(){ log('I','进入联机设置'); renderPvpSetup(); };
+  b2.onclick = function(){ Snd.tap(); Hap.tap(); log('I','进入联机设置'); renderPvpSetup(); };
   p.appendChild(b1); p.appendChild(b2);
-  var b3 = el('button','btn sm','复制运行日志 / 导出TXT');
-  b3.style.maxWidth='280px'; b3.onclick = copyAndExportLog;
-  p.appendChild(b3);
+  var foot = el('div','sub','点右上角 ⚙ 可进入设置与日志');
+  foot.style.cssText='font-size:12px;color:#7c6a58;margin-top:16px;text-align:center';
+  p.appendChild(foot);
   app.appendChild(p);
+  addGear();
 }
 
-async function refreshCacheLine(){
-  var box = document.getElementById('cacheline'); if(!box) return;
+/* 主页齿轮：绝对定位右上角 */
+function addGear(){
+  var g = el('button','gear','⚙');
+  g.setAttribute('aria-label','设置');
+  g.onclick = openDrawer;
+  app.appendChild(g);
+}
+
+/* ---------------------------- 设置抽屉 ---------------------------- */
+async function engineCacheInfo(){
   var jsB=0, wB=0;
   try{
-    var a = await Cache.get('pikajieqi-st.js');   if(a) jsB  = a.byteLength;
-    var b = await Cache.get('pikajieqi-st.wasm'); if(b) wB   = b.byteLength;
+    var a = await Cache.get('pikajieqi-st.js');   if(a) jsB = a.byteLength;
+    var b = await Cache.get('pikajieqi-st.wasm'); if(b) wB = b.byteLength;
   }catch(e){}
-  var total = jsB + wB;
-  box.innerHTML = (wB > 100000)
-    ? ('已缓存引擎 <b style="color:#8fd48f">' + Math.round(total/1024) + ' KB</b> · 下次打开免联网'
-       + '<br><span style="color:#7c6a58;font-size:11px">脚本 ' + Math.round(jsB/1024)
-       + ' KB + 核心 ' + Math.round(wB/1024) + ' KB，共 2 个文件</span>')
-    : ('尚未缓存引擎 · 首次对局需下载约 500 KB');
-  box.style.fontSize='12px';
+  return { js:jsB, wasm:wB, total:jsB+wB, has:(wB>100000) };
+}
+
+var _drawerEl = null;
+function ensureDrawer(){
+  if(_drawerEl) return _drawerEl;
+  var mask = el('div','dmask'); mask.id='dmask';
+  mask.onclick = function(){ closeDrawer(); };
+  var dw = el('div','drawer');
+  var head = el('div','dhead');
+  head.appendChild(el('h3','','设置'));
+  var bx = el('button','btn sm','✕');
+  bx.style.cssText='flex:0 0 38px;padding:0;height:32px;font-size:15px';
+  bx.onclick = function(){ closeDrawer(); };
+  head.appendChild(bx);
+  dw.appendChild(head);
+  var body = el('div','dbody'); body.id='dbody';
+  dw.appendChild(body);
+  document.body.appendChild(mask);
+  document.body.appendChild(dw);
+  _drawerEl = { mask:mask, dw:dw, body:body };
+  return _drawerEl;
+}
+
+function dSwitch(label, desc, getVal, setVal, disabled){
+  var it = el('div','dit');
+  var tt = el('div','tt');
+  tt.appendChild(el('b','',label));
+  if(desc) tt.appendChild(el('span','',desc));
+  var sw = el('div','sw' + (getVal()?' on':'') + (disabled?' dis':''));
+  it.appendChild(tt); it.appendChild(sw);
+  sw.onclick = function(){
+    if(disabled){ toast(desc || '该设备不支持此功能'); return; }
+    setVal(!getVal());
+    sw.classList.toggle('on', getVal());
+    savePrefs();
+    Snd.tap(); Hap.tap();
+    log('I','设置 ' + label + ' = ' + getVal());
+    if(label.indexOf('震动')>=0 && getVal()) Hap.move();
+  };
+  return it;
+}
+function dRange(label, getVal, setVal, unit){
+  var it = el('div','dit');
+  var tt = el('div','tt'); tt.appendChild(el('b','',label));
+  it.appendChild(tt);
+  var wrap = el('div','drng');
+  var inp = el('input'); inp.type='range'; inp.min='0'; inp.max='100'; inp.step='5'; inp.value=String(getVal());
+  var val = el('i','', getVal()+unit);
+  wrap.appendChild(inp); wrap.appendChild(val);
+  it.appendChild(wrap);
+  inp.oninput = function(){ val.textContent = inp.value + unit; setVal(parseInt(inp.value,10)); };
+  inp.onchange = function(){ savePrefs(); if(label.indexOf('音量')>=0) Snd.setVolume(); Snd.tap(); Hap.tap(); log('I','设置 '+label+' = '+getVal()); };
+  return it;
+}
+function dAction(label, descFn, fn){
+  var b = el('button','dact');
+  b.appendChild(el('span','',label));
+  var sm = el('small','', (typeof descFn==='function') ? descFn() : (descFn||''));
+  b.appendChild(sm);
+  b._desc = sm; b._descFn = descFn;
+  b.onclick = function(){ Snd.tap(); Hap.tap(); fn(b); };
+  return b;
+}
+
+async function buildDrawer(){
+  var d = ensureDrawer();
+  var body = d.body, dw = d.dw;
+  body.innerHTML = '';
+  var oldFoot = dw.querySelector('.dfoot');
+  if(oldFoot) oldFoot.remove();
+
+  /* 音效 */
+  var g1 = el('div','dgrp'); g1.appendChild(el('h4','','音效'));
+  g1.appendChild(dSwitch('游戏音效','落子、翻子、吃子、将军、胜负等实时合成音',
+    function(){ return ST.sound; }, function(v){ ST.sound=v; if(v){ Snd.unlock(); Snd.move(); } }));
+  g1.appendChild(dRange('音量', function(){ return ST.volume; }, function(v){ ST.volume=v; }, '%'));
+  body.appendChild(g1);
+
+  /* 震动 */
+  var g2 = el('div','dgrp'); g2.appendChild(el('h4','','震动反馈'));
+  var vibDesc = Hap.ok ? '走子、翻子、胜负时震动' : 'iPhone（iOS Safari）不支持震动，仅安卓可用';
+  g2.appendChild(dSwitch('手机震动', vibDesc,
+    function(){ return ST.vibrate; }, function(v){ ST.vibrate=v; }, !Hap.ok));
+  g2.appendChild(dRange('震动强度', function(){ return ST.vibIntensity; }, function(v){ ST.vibIntensity=v; }, '%'));
+  body.appendChild(g2);
+
+  /* 引擎 */
+  var g3 = el('div','dgrp'); g3.appendChild(el('h4','','引擎'));
+  var info = await engineCacheInfo();
+  var bDel = dAction('删除引擎',
+    function(){ return info.has ? ('已缓存 ' + Math.round(info.total/1024) + ' KB（脚本 ' + Math.round(info.js/1024) + ' KB + 核心 ' + Math.round(info.wasm/1024) + ' KB），删除后需重新下载') : '当前无缓存'; },
+    async function(btn){
+      btn.disabled = true; btn.querySelector('span').textContent = '正在删除…';
+      await Cache.clear();
+      ENGINE.ready=null; ENGINE.worker=null; ENGINE.fromCache=false; ENGINE.sourceLabel='-';
+      log('I','已删除引擎缓存');
+      toast('引擎已删除，下次对局将重新下载');
+      info = await engineCacheInfo();
+      btn.disabled = false; btn.querySelector('span').textContent = '删除引擎';
+      if(btn._desc) btn._desc.textContent = '当前无缓存';
+    });
+  g3.appendChild(bDel);
+
+  var bDiag = dAction('测速诊断', '实测 '+SOURCE_COUNT+' 个下载源，结果写入日志', async function(btn){
+    btn.disabled = true;
+    var box = el('div','');
+    box.style.cssText='margin-top:8px;max-height:180px;overflow-y:auto';
+    btn.parentNode.insertBefore(box, btn.nextSibling);
+    var res = await runDiagnostic(function(t){ box.textContent = t; });
+    box.innerHTML = '';
+    res.forEach(function(r){
+      var line = el('div','');
+      line.style.cssText='font-size:12px;display:flex;gap:6px;padding:3px 0;border-bottom:1px solid #332920';
+      var nm = el('span','', r.label); nm.style.cssText='flex:1;color:'+(r.ok?'#8fd48f':'#d98f8f');
+      var ms = el('span','', r.ok ? (r.ms+'ms') : '—'); ms.style.cssText='width:56px;text-align:right;color:#c9b8a0';
+      var kbs = el('span','', r.ok ? (r.kbps+'KB/s') : r.note); kbs.style.cssText='width:84px;text-align:right;color:#9c8a76;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap';
+      line.appendChild(nm); line.appendChild(ms); line.appendChild(kbs);
+      box.appendChild(line);
+    });
+    var okN = res.filter(function(r){return r.ok;}).length;
+    var sum = el('div','', okN + ' / ' + res.length + ' 个源可用');
+    sum.style.cssText='margin-top:8px;font-size:12px;color:#e8b872';
+    box.appendChild(sum);
+    btn.disabled = false;
+    toast('测速完成，结果已写入日志');
+  });
+  g3.appendChild(bDiag);
+  body.appendChild(g3);
+
+  /* 日志 */
+  var g4 = el('div','dgrp'); g4.appendChild(el('h4','','诊断'));
+  g4.appendChild(dAction('诊断日志', '复制或导出 TXT 发给开发者排查问题', function(){ openLog(); }));
+  body.appendChild(g4);
+
+  /* 显示 */
+  var g6 = el('div','dgrp'); g6.appendChild(el('h4','','显示'));
+  g6.appendChild(dSwitch('对局页显示悬浮球','右下角悬浮球可进入 / 退出全屏，可拖动，长按复位',
+    function(){ return ST.fsDot !== false; },
+    function(v){ ST.fsDot = v; if(G.mode){ try{ fsBallShow(v && !!document.querySelector('canvas')); }catch(e){} } }));
+  body.appendChild(g6);
+
+  /* 关于 */
+  var g5 = el('div','dgrp'); g5.appendChild(el('h4','','关于'));
+  var ab = el('div','');
+  ab.style.cssText='font-size:11px;color:#7c6a58;line-height:1.7';
+  ab.innerHTML = '应用 v' + APP_VERSION + ' · 引擎 ' + ENGINE_VERSION + '<br>' +
+                 SOURCE_COUNT + ' 源并发赛马下载 · IndexedDB 缓存<br>' +
+                 '引擎 PikaJieQi（GPL-3.0）';
+  g5.appendChild(ab);
+  body.appendChild(g5);
+
+  /* 底部操作 */
+  var foot = el('div','dfoot');
+  var bReset = el('button','btn','恢复默认设置');
+  bReset.onclick = function(){
+    resetPrefs();
+    buildDrawer();
+    toast('已恢复默认设置');
+    Snd.tap(); Hap.tap();
+  };
+  var bClose = el('button','btn','关闭');
+  bClose.onclick = function(){ closeDrawer(); };
+  foot.appendChild(bReset); foot.appendChild(bClose);
+  dw.appendChild(foot);
+}
+
+async function openDrawer(){
+  Snd.tap(); Hap.tap();
+  await buildDrawer();
+  var d = ensureDrawer();
+  d.mask.classList.add('open');
+  d.dw.classList.add('open');
+  log('I','打开设置');
+}
+function closeDrawer(){
+  var d = ensureDrawer();
+  d.mask.classList.remove('open');
+  d.dw.classList.remove('open');
+  Snd.tap(); log('I','关闭设置');
 }
 
 function optRow(items, cur, onPick){
@@ -1200,66 +1970,18 @@ function renderPveSetup(){
   loadui.style.whiteSpace='pre-line';
   page.appendChild(loadui);
 
+  var ver = el('div','msg','应用 v'+APP_VERSION+' · 引擎 '+ENGINE_VERSION+' · '+SOURCE_COUNT+' 源并发');
+  ver.style.cssText='font-size:11px;color:#7c6a58;text-align:center;margin-top:2px';
+  page.appendChild(ver);
+
   var go = el('button','btn pri','开始对局'); go.style.maxWidth='320px';
   go.onclick = startPve;
   page.appendChild(go);
-
-  /* 缓存与诊断 */
-  var c3 = el('div','card'); c3.appendChild(el('h3','','引擎缓存与诊断'));
-  var cacheLine = el('div','msg',''); cacheLine.id='cacheline';
-  c3.appendChild(cacheLine);
-  var rowA = el('div','row');
-  var bClr = el('button','btn sm','清除引擎缓存');
-  bClr.onclick = async function(){
-    bClr.disabled=true; bClr.textContent='清除中…';
-    await Cache.clear();
-    ENGINE.ready=null; ENGINE.worker=null; ENGINE.fromCache=false;
-    log('I','已清除引擎缓存');
-    toast('缓存已清除，下次将重新下载');
-    bClr.disabled=false; bClr.textContent='清除引擎缓存';
-    refreshCacheLine();
-  };
-  var bDiag = el('button','btn sm','测速诊断');
-  bDiag.onclick = async function(){
-    bDiag.disabled=true;
-    var box = document.getElementById('diagbox');
-    var res = await runDiagnostic(function(t){ box.textContent = t; });
-    box.innerHTML = '';
-    var head = el('div','','源（按优先级）     延迟      大小');
-    head.style.cssText='font-size:11px;color:#9c8a76;margin-bottom:6px';
-    box.appendChild(head);
-    res.forEach(function(r){
-      var line = el('div','');
-      line.style.cssText='font-size:12px;display:flex;gap:6px;padding:3px 0;border-bottom:1px solid #332920';
-      var nm = el('span','', r.label); nm.style.cssText='flex:1;color:'+(r.ok?'#8fd48f':'#d98f8f');
-      var ms = el('span','', r.ok ? (r.ms+'ms') : '—'); ms.style.cssText='width:58px;text-align:right;color:#c9b8a0';
-      var kbs = el('span','', r.ok ? (r.kbps+'KB/s') : r.note); kbs.style.cssText='width:90px;text-align:right;color:#9c8a76;font-size:11px';
-      line.appendChild(nm); line.appendChild(ms); line.appendChild(kbs);
-      box.appendChild(line);
-    });
-    var okN = res.filter(function(r){return r.ok;}).length;
-    var sum = el('div','', okN+' / '+res.length+' 个源可用');
-    sum.style.cssText='margin-top:8px;font-size:12px;color:#e8b872';
-    box.appendChild(sum);
-    bDiag.disabled=false;
-    toast('测速完成，结果已写入日志');
-  };
-  rowA.appendChild(bClr); rowA.appendChild(bDiag);
-  c3.appendChild(rowA);
-  var diagbox = el('div','msg',''); diagbox.id='diagbox';
-  diagbox.style.cssText='margin-top:10px;min-height:20px;max-height:150px;overflow-y:auto';
-  c3.appendChild(diagbox);
-  page.appendChild(c3);
-
-  var ver = el('div','msg','应用 v'+APP_VERSION+' · 引擎 '+ENGINE_VERSION+' · '+SOURCE_COUNT+' 源并发');
-  ver.style.cssText='font-size:11px;color:#7c6a58;text-align:center;margin-top:4px';
-  page.appendChild(ver);
 
   var back = el('button','btn','返回'); back.style.maxWidth='320px';
   back.onclick = renderHome;
   page.appendChild(back);
   app.appendChild(page);
-  refreshCacheLine();          // 必须等页面插入 DOM 之后再刷新
 }
 
 async function startPve(){
@@ -1277,7 +1999,6 @@ async function startPve(){
     if(ui) ui.textContent = '引擎就绪 · 来源 ' + ENGINE.sourceLabel
       + (ENGINE.fromCache ? '（本地缓存）' : '')
       + '\n共耗时 ' + ((Date.now()-t0)/1000).toFixed(1) + ' 秒';
-    refreshCacheLine();
     log('I','开始人机对局', { level:G.level, human:G.humanColor, engineSource:ENGINE.sourceLabel, fromCache:ENGINE.fromCache });
     G.mode='pve';
     G.humanColor = G.humanColor||'red';
@@ -1299,6 +2020,15 @@ async function startPve(){
 }
 
 /* ---------- 游戏页 ---------- */
+function ensureFsDot(){
+  if(document.getElementById('fs-dot')) return document.getElementById('fs-dot');
+  var d = el('button','','');
+  d.id = 'fs-dot';
+  d.setAttribute('aria-label','全屏');
+  document.body.appendChild(d);
+  return d;
+}
+
 function renderGame(){
   clearApp();
   // 顶栏
@@ -1309,10 +2039,29 @@ function renderGame(){
   var bquit = el('button','btn sm','退出');
   bquit.style.flex='0 0 auto';
   bquit.onclick = function(){
-    if(G.peer){ try{ G.peer.destroy(); }catch(e){} G.peer=null; }
-    if(G.mode==='pve') renderPveSetup(); else renderPvpSetup();
+    var isNet = (G.mode === 'pvp');
+    var msg = isNet
+      ? '退出将断开与对手的连接，确定退出？'
+      : '当前对局进度将丢失，确定退出？';
+    confirmBox(msg, function(){
+      // 先解锁返回，让用户回到上级后能正常关标签页
+      Guard.unlock();
+      fsBallShow(false);
+      try{ var ap=document.getElementById('app'); if(ap) ap.classList.remove('immersive'); }catch(e){}
+      if(document.fullscreenElement || document.webkitFullscreenElement){
+        try{ if(document.exitFullscreen) document.exitFullscreen();
+             else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch(e){}
+      }
+      if(G.peer){ try{ G.peer.destroy(); }catch(e){} G.peer=null; }
+      log('I','退出对局', { mode:G.mode, ply: G.state ? G.state.ply : 0 });
+      if(G.mode==='pve') renderPveSetup(); else renderPvpSetup();
+    });
   };
   top.appendChild(bquit);
+  var bg = el('button','gear','⚙');
+  bg.setAttribute('aria-label','设置');
+  bg.onclick = openDrawer;
+  top.appendChild(bg);
   app.appendChild(top);
 
   // 中部
@@ -1341,20 +2090,25 @@ function renderGame(){
     bb.appendChild(mk('认输', function(){ confirmBox('确定认输？', function(){
       G.state.over={result:'resign', winner:Rules.other(G.humanColor)}; updateStatus(); Board.draw(); log('I','认输');
     });}));
-    bb.appendChild(mk('日志', copyAndExportLog));
   } else {
     bb.appendChild(mk('认输', function(){
       if(!G.conn) return;
       confirmBox('确定认输？', function(){ sendNet({t:'resign'}); G.state.over={result:'resign', winner:Rules.other(G.netColor)}; updateStatus(); Board.draw(); });
     }));
     bb.appendChild(mk('悔棋', function(){ if(G.conn) sendNet({t:'reqUndo'}); }));
-    bb.appendChild(mk('日志', copyAndExportLog));
   }
   app.appendChild(bb);
 
   Board.init(cv);
   cv.addEventListener('click', onBoardClick);
   setTimeout(function(){ Board.resize(); Board.draw(); }, 0);
+
+  /* 对局页：显示悬浮球 + 锁死返回键 */
+  ensureFsDot();
+  fsBallShow(true);
+  fsBallBind();
+  fsBall();
+  Guard.lock();
 }
 
 function updateStatus(){
@@ -1371,7 +2125,10 @@ function updateStatus(){
   var turnTxt = s.turn==='red' ? '红方走' : '黑方走';
   var who = G.mode==='pve' ? (s.turn===G.humanColor?'（你）':'（AI思考中）') : (s.turn===G.netColor?'（你）':'（对手）');
   var extra='';
-  if(s.over && s.over.result==='check') extra=' · <b>将军</b>';
+  if(s.over && s.over.result==='check'){
+    extra=' · <b>将军</b>';
+    if(G._lastCheckPly !== s.ply){ G._lastCheckPly = s.ply; Snd.check(); Hap.check(); }
+  }
   var noCapTxt = s.noCap>=60 ? (' · 无吃子'+s.noCap+'/80') : '';
   st.innerHTML = turnTxt + who + extra + noCapTxt;
   updateCaps();
@@ -1409,6 +2166,14 @@ function confirmBox(msg, fn){
   document.body.appendChild(mask);
 }
 
+
+/* 走子反馈：翻子 > 吃子 > 将军 > 普通 */
+function feedbackMove(evt){
+  if(evt && evt.revealed){ Snd.reveal(); Hap.reveal(); return; }
+  if(evt && evt.captured){ Snd.capture(); Hap.capture(); return; }
+  Snd.move(); Hap.move();
+}
+
 function onBoardClick(ev){
   if(!G.state) return;
   if(isOver(G.state.over)) return;
@@ -1428,6 +2193,7 @@ function onBoardClick(ev){
     G.sel = idx;
     G.moves = Rules.legalMoves(G.state, idx);
     log('D','选中棋子', { idx:idx, uci:Rules.idxToUci(idx), moves:G.moves.length });
+    Snd.tap(); Hap.tap();
     Board.draw();
   } else {
     G.sel=null; G.moves=[]; Board.draw();
@@ -1445,6 +2211,7 @@ function doMove(from, to){
       G.state = rh.state; G.sel=null; G.moves=[];
       G.viewState = Rules.viewFor(G.state, 'red');
       log('I','房主走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), revealed:rh.evt.revealed, captured:rh.evt.captured });
+      feedbackMove(rh.evt);
       Board.draw(); updateStatus(); broadcast();
       if(isGameOver()) return;
       return;
@@ -1462,6 +2229,7 @@ function doMove(from, to){
   G.viewState = Rules.viewFor(G.state, G.humanColor);
   log('I','玩家走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), from:from, to:to,
     revealed:res.evt.revealed, captured:res.evt.captured });
+  feedbackMove(res.evt);
   Board.draw(); updateStatus();
   if(isGameOver()) return;
   if(G.mode==='pve') setTimeout(aiTurn, 260);
@@ -1487,6 +2255,9 @@ function showResult(o){
   var mine = G.mode==='pve' ? G.humanColor : G.netColor;
   var note='';
   if(o.winner){ note = (o.winner===mine) ? ' 你赢了' : ' 你输了'; }
+  if(!o.winner){ Snd.draw(); Hap.tap(); }
+  else if(o.winner===mine){ Snd.win(); Hap.win(); }
+  else { Snd.lose(); Hap.lose(); }
   confirmBox(txt + note, function(){
     if(G.mode==='pve'){
       G.state=Rules.newGame(); G.sel=null; G.moves=[]; G.ponder=null; G.history=[];
@@ -1512,6 +2283,7 @@ function doUndo(){
   G.state=target; G.sel=null; G.moves=[]; G.ponder=null;
   G.viewState=Rules.viewFor(G.state,G.humanColor);
   log('I','悔棋', { backToPly:G.state.ply });
+  Snd.undo(); Hap.undo();
   Board.draw(); updateStatus(); toast('已悔棋');
 }
 
@@ -1596,6 +2368,7 @@ function applyAi(from, to, fallback){
   G.viewState=Rules.viewFor(G.state,G.humanColor);
   log('I','AI走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), revealed:res.evt.revealed,
     captured:res.evt.captured, fallback:fallback });
+  feedbackMove(res.evt);
   Board.draw(); updateStatus();
   if(isGameOver()) return;
   // 后台思考
@@ -1679,6 +2452,7 @@ function renderPvpSetup(){
   var back=el('button','btn','返回'); back.style.maxWidth='320px'; back.onclick=renderHome;
   page.appendChild(back);
   app.appendChild(page);
+  addGear();
 
   bCreate.onclick=function(){ hostRoom(msg); };
   bJoin.onclick=function(){ var v=(input.value||'').trim().toUpperCase(); if(!v){ setMsg(msg,'请输入房间号'); return; } joinRoom(v, msg); };
@@ -1758,6 +2532,7 @@ async function joinRoom(room, msgEl){
       G.conn=conn;
       conn.on('open', function(){
         log('I','已连接房主');
+        Snd.connect(); Hap.connect();
         G.peer=peer;
         setupConn(conn);
         renderGame();
@@ -1845,10 +2620,32 @@ function broadcast(){
 /* =========================================================================
    启动
    ========================================================================= */
-window.addEventListener('resize', function(){ if(document.querySelector('canvas')){ Board.resize(); Board.draw(); } });
-window.addEventListener('orientationchange', function(){ setTimeout(function(){ if(document.querySelector('canvas')){ Board.resize(); Board.draw(); } },300); });
+window.addEventListener('resize', function(){
+  if(document.querySelector('canvas')){ Board.resize(); Board.draw(); }
+  try{ fsBallClamp(); fsBall(); }catch(e){}
+});
+window.addEventListener('orientationchange', function(){
+  setTimeout(function(){
+    if(document.querySelector('canvas')){ Board.resize(); Board.draw(); }
+    try{ fsBallClamp(); fsBall(); }catch(e){}
+  }, 320);
+});
+document.addEventListener('fullscreenchange', function(){ try{ fsSync(); }catch(e){} });
+document.addEventListener('webkitfullscreenchange', function(){ try{ fsSync(); }catch(e){} });
 // 客机走子后也需要在房主处触发；客机自身走子已由 doMove 发出
 logEnv();
+SwipeGuard.init();
+(function(){
+  function unlockOnce(){
+    Snd.unlock();
+    window.removeEventListener('touchstart', unlockOnce);
+    window.removeEventListener('mousedown', unlockOnce);
+    window.removeEventListener('keydown', unlockOnce);
+  }
+  window.addEventListener('touchstart', unlockOnce, {passive:true});
+  window.addEventListener('mousedown', unlockOnce);
+  window.addEventListener('keydown', unlockOnce);
+})();
 renderHome();
 log('I','应用启动完成');
 </script>
