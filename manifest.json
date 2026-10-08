@@ -1,0 +1,19 @@
+{
+  "name": "游戏大厅",
+  "short_name": "游戏大厅",
+  "description": "我的 HTML 游戏集合平台",
+  "start_url": "./jili-game.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b0d15",
+  "theme_color": "#0b0d15",
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/kevin-jili/html-ck/main/wuziqi/wuziqi-logo.gif",
+      "sizes": "256x256",
+      "type": "image/gif",
+      "purpose": "any"
+    }
+  ]
+}
