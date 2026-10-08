@@ -4,7 +4,8 @@
    - 引擎/组件等跨域资源：cache-first（下一次起永久秒开）
    - 带 ?_cb= 的请求不缓存（删除引擎功能靠它做真下载测试）
 */
-var CACHE = 'gomoku-v5.94.0';
+var CACHE = 'gomoku-v1'; // 固定名：以后更新 HTML 不用再传本文件
+var CACHE_PREFIX = 'gomoku-'; // 旧缓存按此前缀清理
 var PRECACHE = ['./wuziqi.html', './manifest.json'];
 var ASSET_HOSTS = ['jsdelivr.net', 'githubusercontent.com', 'github.com'];
 
@@ -22,8 +23,10 @@ self.addEventListener('activate', function (e) {
   e.waitUntil(
     caches.keys()
       .then(function (ks) {
-        return Promise.all(ks.filter(function (k) { return k !== CACHE; })
-          .map(function (k) { return caches.delete(k); }));
+        // 只清理自家旧缓存（按前缀），不动其他用途的缓存
+        return Promise.all(ks.filter(function (k) {
+          return k.indexOf(CACHE_PREFIX) === 0 && k !== CACHE;
+        }).map(function (k) { return caches.delete(k); }));
       })
       .then(function () { return self.clients.claim(); })
   );
