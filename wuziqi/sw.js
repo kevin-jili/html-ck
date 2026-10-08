@@ -4,7 +4,7 @@
    - 引擎/组件等跨域资源：cache-first（下一次起永久秒开）
    - 带 ?_cb= 的请求不缓存（删除引擎功能靠它做真下载测试）
 */
-var CACHE = 'gomoku-v5.91.0';
+var CACHE = 'gomoku-v5.92.0';
 var PRECACHE = ['./wuziqi.html', './manifest.json'];
 var ASSET_HOSTS = ['jsdelivr.net', 'githubusercontent.com', 'github.com'];
 
