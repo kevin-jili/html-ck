@@ -5,6 +5,9 @@
 <style>html,body{margin:0;height:100%;background:#14100c}
 #boot{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:#8a7965;font:14px system-ui}</style>
 </head><body><script>
+/* 中国象棋 · 揭棋 · 单文件网页版 —— 版本见下一行 JIEQI_VER（明文，GitHub 直接可见）
+   以下 var b="..." 是 DEFLATE 压缩后的正文，打开时由本外壳解压还原。 */
+var JIEQI_VER = "2.6.1";
 (function(){
 function _inf(d){var p=0,bb=0,bc=0,o=new Uint8Array(1<<16),L=0;
 function nd(n){if(L+n<=o.length)return;var c=o.length;while(c<L+n)c<<=1;var q=new Uint8Array(c);q.set(o.subarray(0,L));o=q;}
