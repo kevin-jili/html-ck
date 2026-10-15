@@ -1,0 +1,4035 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>揭棋 · 模式选择</title>
+<style>
+/* 纯黑背景板 + 居中竖排厚板 3D 菜单 + 右上设置 + 右下全屏键 */
+:root{
+  --ink2:#e8dfc8; --line:rgba(245,239,224,.30); --acc:#ffb44a; --txt:#f5efe0; --dim:#a49e8e;
+  --sh:3px 3px 0 rgba(0,0,0,.42);
+  --hand:"LXGW WenKai","XiaWuWenKai","楷体","KaiTi","STKaiti","楷体_GB2312","Comic Sans MS",cursive;
+  --r1:255px 14px 225px 16px/16px 225px 14px 255px;
+  --r2:14px;
+  /* 底板尺寸由 JS 冻结成 px，其余尺寸一律由它派生 */
+  --plateW:100vw; --plateH:100vh;
+  --btnH:clamp(64px, calc(var(--plateH) * .105), 88px);
+  --btnGap:clamp(10px, calc(var(--plateH) * .016), 16px);
+
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#000;color:var(--txt);
+  font-family:var(--hand),-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;
+  -webkit-touch-callout:none;-webkit-user-drag:none}
+#stage{position:fixed;inset:0;overflow:hidden;background:#000}
+
+/* 刚体模型：整块版面放进尺寸冻结的 #plate，内部只用 px/百分比，不依赖视口。
+   #dock 只抵消「视口顶边的位移」，于是视口怎么长，底板内一切纹丝不动。 */
+#dock{position:fixed;left:0;top:0;width:100%;height:100%;z-index:45;pointer-events:none;
+  transform:translate3d(0, calc(-1 * var(--fsdy,0px)), 0);
+  will-change:transform;backface-visibility:hidden}
+#plate{position:absolute;left:0;top:0;width:var(--plateW);height:var(--plateH);pointer-events:none}
+
+#head{position:absolute;left:0;right:0;top:8%;padding:0 24px;text-align:center}
+/* 游戏名：实体厚度立体（8 层递进侧壁 + 金色柔光），与按钮的厚板 3D 同一套语言。
+   厚度靠 text-shadow 逐层压暗堆叠，是能看见的侧壁，不是渐变或投影。
+   字号由底板高度派生（clamp 36~56px），各屏宽实测墨迹不溢出、不撞菜单。
+   --txt 仍被 body / .dhead h3 / #toast 使用，未被本条改动孤立。 */
+/* 游戏名 = 按钮文字 08 款的放大版：色值、字重、字距、挤出阴影与 .mbtn b 逐项一致，
+   只有 font-size 不同。原先那套 8 层垂直厚块 + 金色柔光已整体移除。 */
+#head h1{margin:0;font-size:clamp(36px, calc(var(--plateH) * .069), 56px);
+  letter-spacing:.06em;font-weight:700;color:#ffe9c2;
+  text-shadow:1px 1px 0 #a8722a, 2px 2px 0 #8a5c1e, 3px 3px 0 #6c4716, 4px 4px 5px rgba(0,0,0,.6)}
+#head .sub{margin:8px 0 0;font-size:11px;line-height:1.7;color:var(--dim)}
+/* 菜单整体上移一个按钮的高度（54% − btnH）。
+   max() 右半为防碰撞下限：首键顶边至少离标题底边 12px，窄屏标题换行变高时自动少上移。 */
+/* 菜单下移一个按钮高（--btnH），给标题腾空间（原为 54% - btnH 上移一个按钮）。
+   两个下限取 max 防碰撞：
+   1) 上：标题底 + 12px + 菜单半高 —— 标题换行变高时自动少上移（沿用原有约束）
+   2) 下：菜单底 ≤ 底栏顶(底板高 - 66px - sib) - 8px —— 保险下限，防止将来
+      标题变矮或菜单变高时压到底栏；当前六屏宽均未触发（余量 47~150px）。
+   注：320 小屏实测只下移 19px 而非 64px —— 该屏标题换行成两行(82px高)，
+      改前菜单本就被"标题底+12"的上约束顶住，下移只是回到 54%，属预期。 */
+#menu{position:absolute;left:50%;transform:translate(-50%,-50%);
+  top:max(calc(8% + var(--headH,64px) + 12px + var(--menuH,352px) / 2),
+          min(54%, calc(var(--plateH) - 66px - var(--sib,0px) - 8px - var(--menuH,352px) / 2)));
+  width:min(300px, calc(var(--plateW) - 44px));
+  display:flex;flex-direction:column;gap:var(--btnGap)}
+
+/* ---------- 按钮骨架：厚板挤出 3D，皮肤只换 --s-bg / --s-wall ---------- */
+.mbtn{position:relative;overflow:hidden;pointer-events:auto;
+  width:100%;min-height:var(--btnH);padding:8px 12px;border-radius:var(--r2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;
+  font-family:inherit;color:var(--ink2);
+  background-image:var(--s-bg,linear-gradient(180deg,#7e5634,#5e4026 55%,#402c19));
+  background-color:var(--s-wall,#523820);
+  --s-hih:36%;
+  /* 侧壁 fallback：老浏览器不支持 color-mix 时，至少保住一层厚度 */
+  box-shadow:0 8px 0 var(--s-wall,#523820),0 11px 14px -3px rgba(0,0,0,.6);
+  border:0}
+/* 8 层递进实色侧壁：由单个 --s-wall 经 color-mix 逐层压暗算出，
+   避免为每种皮肤各写 8 层。不支持 color-mix 的内核自动回落到上面的单层。 */
+.mbtn{box-shadow:
+  0 1px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 92%, #000),
+  0 2px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 84%, #000),
+  0 3px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 76%, #000),
+  0 4px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 68%, #000),
+  0 5px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 60%, #000),
+  0 6px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 52%, #000),
+  0 7px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 44%, #000),
+  0 8px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 36%, #000),
+  0 11px 14px -3px rgba(0,0,0,.6)}
+/* 清漆高光条：--s-hih 为 0 时自然不可见 */
+.mbtn::before{content:'';position:absolute;left:0;right:0;top:0;height:var(--s-hih,0);
+  background:var(--s-hi,linear-gradient(180deg,rgba(255,230,196,.26),transparent));border-radius:var(--s-hir,0);pointer-events:none}
+/* 按下：整体下沉 + 侧壁塌陷，像真按进面板里 */
+.mbtn:active{transform:translate(2px,2px);
+  box-shadow:0 2px 0 var(--s-wall,#8a5f22),0 3px 6px rgba(0,0,0,.55)}
+.mbtn:active{box-shadow:
+  0 1px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 84%, #000),
+  0 2px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 60%, #000),
+  0 3px 6px rgba(0,0,0,.55)}
+/* 文字款色固定为 08：香槟色 + 1/2/3px 棕色阶梯挤出 + 4px 投影 */
+.mbtn b{position:relative;font-size:19px;font-weight:700;letter-spacing:.06em;color:#ffe9c2;
+  text-shadow:1px 1px 0 #a8722a,2px 2px 0 #8a5c1e,3px 3px 0 #6c4716,4px 4px 5px rgba(0,0,0,.6)}
+.mbtn span{position:relative;font-size:12px;color:var(--dim);opacity:.95}
+/* ---------- 返回大厅键：jieqi.html 的 .hall 款 ---------- */
+/* 款一字不差：120° 金渐变描边 + 双背景层(padding-box,border-box) + sheen 流光 +
+   金色箭头（按下左移 4px）+ #1d1710 深底。尺寸拉到与另外三键一致（300x81）。
+   三处适配（都是"尺寸/观感"，不动款）：
+   1) max-width:280px 不抄 —— 会变窄 20px，本页保持 300
+   2) padding:20px → 14px 16px + line-height:1.15 —— 20px 会撑到 98px 高；
+      14px 配副标题 margin-top:2px 实测精确落在 81px，与另外三键齐平，
+      上下留白 20px（原版 22px，观感一致）
+   3) 关掉 .mbtn::before 的清漆高光 —— 那是木纹按钮的，糊在 hall 上会把它洗成棕灰色
+   文字沿用本页固定的 08 款（香槟色 + 棕色阶梯挤出）。 */
+.hall{position:relative;overflow:hidden;
+  flex-shrink:0;padding:14px 16px;line-height:1.15;
+  font-size:19px;font-weight:600;cursor:pointer;
+  background:#1d1710;
+  border:2px solid transparent;
+  background-image:linear-gradient(#1d1710,#1d1710),
+    linear-gradient(120deg,#7a5a2a,#e8c274 25%,#fff0c4 45%,#e8c274 65%,#7a5a2a);
+  background-origin:border-box;background-clip:padding-box,border-box;
+  box-shadow:0 2px 10px rgba(0,0,0,.4)}
+.hall .arw{display:inline-block;margin-right:10px;color:#e8c274;font-weight:700;
+  transition:transform .18s}
+.hall:active .arw{transform:translateX(-4px)}
+.hall:active{background-image:linear-gradient(#2a2118,#2a2118),
+  linear-gradient(120deg,#7a5a2a,#e8c274,#fff0c4,#e8c274,#7a5a2a)}
+.hall .d{display:block;font-size:12px;font-weight:400;color:#9d8a6c;margin-top:2px}
+
+.hall .sheen{position:absolute;top:-60%;left:-40%;width:40%;height:220%;
+  pointer-events:none;
+  background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,240,200,.28),rgba(255,255,255,0));
+  transform:translate3d(0,0,0) rotate(18deg);animation:hallSheen 3.5s ease-in-out infinite}
+/* 原版：0%{left:-40%} 55%{left:130%} 100%{left:130%}，位移 170% 按钮宽且纯水平。
+   用 transform 走合成层（原版 left 动画实测 1.2 秒 78 次重排），等价位移 425%
+   （sheen 自身宽 40%，425%×40% = 170%）。
+   顺序必须是 translate3d 在 rotate 之前：CSS 的 transform 函数从右往左作用于点，
+   写成 rotate(...) translate(...) 会把平移方向也旋转 18°，实测垂直位移 +156px
+   （按钮高才 81px），流光斜着掉出按钮——就是"走到一半往下掉"。 */
+@keyframes hallSheen{
+  0%{transform:translate3d(0,0,0) rotate(18deg)}
+  55%{transform:translate3d(425%,0,0) rotate(18deg)}
+  100%{transform:translate3d(425%,0,0) rotate(18deg)}
+}
+@media (prefers-reduced-motion:reduce){ .hall .sheen{animation:none;opacity:0} }
+/* 清漆高光是木纹按钮的，hall 上会把它洗成棕灰色：关掉 */
+.hall::before{display:none}
+
+/* 三个固定角/行元素：位置只由冻结的安全区决定 */
+#btnSet,#btnFs{position:absolute;pointer-events:auto;width:44px;height:44px;border-radius:var(--r2);z-index:50;
+  background:rgba(0,0,0,.5);border:2px solid var(--line);color:var(--ink2);
+  font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:var(--sh)}
+/* 齿轮：换成 jieqi.html 的 .gear 款（34x34 正圆 · #3c2f22 底 · #55432f 金棕边 · #e8b872 金色），
+   位置沿用本页冻结安全区（不用 env()，否则会破坏全屏锚定）。
+   ::after 把触摸热区撑到 44x44 —— 34 小于触摸目标建议最小值，手指容易落空。 */
+#btnSet{top:calc(22px + var(--sit,0px));right:calc(22px + var(--sir,0px));
+  width:34px;height:34px;border-radius:50%;
+  background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:17px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5)}
+#btnSet::after{content:'';position:absolute;left:-5px;top:-5px;right:-5px;bottom:-5px;border-radius:50%}
+#btnSet:active{background:#55432f;transform:translate(2px,2px);
+  box-shadow:1px 1px 0 rgba(0,0,0,.38);border-width:2.5px}
+#btnFs{right:calc(22px + var(--sir,0px));bottom:calc(22px + var(--sib,0px))}
+#btnFs:active{transform:translate(2px,2px);box-shadow:1px 1px 0 rgba(0,0,0,.38);border-width:2.5px}
+#btnFs.on{background:rgba(255,180,74,.22);border-color:var(--acc);color:#ffe9c2}
+/* 版本号宽度：左 24px；右侧留 70px 给全屏键（键本身 right:22 + 44 宽，即占右侧 66px）。
+   原先左右各 80px 只剩 160px 可用宽，装不下「当前引擎：8核多线程 · Hash 256MB · 版本号v1.5.0」。
+   改成左 24 / 右 70 后：390 屏可用 296px、320 屏 226px；再给 ≤340px 小屏降到 9px（最长文案 220px），
+   六种文案都不截断，且 #ver 右边界（250）不与全屏键左边界（254）重叠。 */
+#ver{position:absolute;left:24px;right:70px;bottom:calc(22px + var(--sib,0px));height:44px;
+  line-height:44px;text-align:center;font-size:10px;color:var(--dim);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+@media (max-width:340px){ #ver{font-size:9px} }
+/* 版本号热区：#dock/#plate 是 pointer-events:none，#ver 会继承，导致压根点不到。
+   这里不开 #ver 自身（它是横跨屏幕的 44px 宽条，点底部空白也会误计数），
+   只给内层文字开 auto，热区 = 版本号文字 + 左右各 12px。 */
+#ver b{pointer-events:auto;display:inline-block;padding:0 12px;font-weight:400}
+
+/* ============ 设置抽屉：款式照抄 jieqi.html 的遮罩 + 右侧抽屉 ============ */
+/* 关键：#mask 与 #panel 已从 #plate 内移到 #stage 下（#dock 平级）。
+   #dock 带 transform（全屏顶边补偿），fixed 元素放进去会以 dock 为包含块而错位；
+   放 #stage 下才能解析到视口，且全屏时 #stage 是 fullscreen 元素，抽屉照常可见。 */
+#mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;opacity:0;pointer-events:none;
+  transition:opacity .22s;touch-action:none}
+#mask.open{opacity:1;pointer-events:auto}
+/* 测试模式抽屉：与设置抽屉同款参数（右侧滑出 .24s ease），仅 z-index 更高一层 */
+#tmask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:70;opacity:0;pointer-events:none;
+  transition:opacity .22s;touch-action:none}
+#tmask.open{opacity:1;pointer-events:auto}
+#tpanel{position:fixed;top:0;right:0;bottom:0;width:86%;max-width:340px;background:#1e1812;
+  border-left:1px solid #55432f;z-index:71;transform:translateX(100%);transition:transform .24s ease;
+  display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y}
+#tpanel.open{transform:translateX(0)}
+.dit .tt span{white-space:pre-wrap;word-break:break-all}
+#panel{position:fixed;top:0;right:0;bottom:0;width:86%;max-width:340px;background:#1e1812;
+  border-left:1px solid #55432f;z-index:61;transform:translateX(100%);transition:transform .24s ease;
+  display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y}
+#panel.open{transform:translateX(0)}
+.dhead{flex:0 0 auto;display:flex;align-items:center;gap:8px;
+  padding:calc(12px + var(--sit,0px)) 14px 12px;border-bottom:1px solid #3a2e22}
+.dhead h3{margin:0;font-size:16px;color:#e8b872;flex:1;font-weight:600}
+#btnDClose{flex:0 0 38px;width:38px;height:32px;padding:0;font-size:15px;font-family:inherit;
+  border-radius:8px;border:1px solid #55432f;background:#2b2318;color:#f2e8da}
+#btnDClose:active{background:#3d3022}
+.dbody{flex:1 1 auto;overflow-y:auto;padding:12px 14px calc(20px + var(--sib,0px));
+  -webkit-overflow-scrolling:touch}
+.dgrp{margin-bottom:16px}
+.dgrp h4{margin:0 0 8px;font-size:13px;color:#c9a870;font-weight:600;letter-spacing:1px}
+.dit{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;
+  background:#2c2318;margin-bottom:7px}
+.dit-rng{flex-direction:column;align-items:stretch;gap:0;padding:10px 12px 12px}
+.dit .tt{flex:1;min-width:0}
+.dit .tt b{display:block;font-size:14px;font-weight:600;color:#f2e8da}
+.dit .tt span{display:block;font-size:11px;color:#9c8a76;margin-top:2px;line-height:1.45}
+.dit-hint{display:block;margin-top:6px;font-size:11px;color:#8a7965;line-height:1.5}
+.sw{flex:0 0 46px;width:46px;height:26px;border-radius:13px;background:#4a3c2c;position:relative;
+  transition:background .2s;border:1px solid #5d4a35;pointer-events:auto}
+.sw.on{background:#a8642a;border-color:#c8813c}
+.sw::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;border-radius:50%;
+  background:#e8d5b0;transition:transform .2s}
+.sw.on::after{transform:translateX(20px)}
+/* 滑块：自绘 + Pointer Capture，照抄 jieqi.html 的做法。
+   为什么弃用原生 input[type=range]：jieqi 源码注释实测——QQ浏览器（X5 内核 / Chrome 121）
+   上原生 range 只在指针停留在控件矩形内时才响应，手指滑出那一条就断连，
+   表现为「拖不动、只能跳到两端」。改法：自绘轨道与滑块头，
+   用 pointerdown + setPointerCapture 全程接管手势，手指移出控件也只驱动它，直到松手。 */
+.drng{display:flex;align-items:center;gap:10px;width:100%;margin-top:8px}
+.drng .lab{flex:0 0 auto;font-size:12px;color:#c9a870;min-width:44px}
+.sld{flex:1;min-width:0;position:relative;height:44px;display:flex;align-items:center;
+  touch-action:none;cursor:pointer;-webkit-user-select:none;user-select:none}
+.sld .trk{position:relative;flex:1;height:6px;border-radius:3px;background:#55432f}
+.sld .fil{position:absolute;left:0;top:0;bottom:0;border-radius:3px;background:#c8813c;pointer-events:none}
+.sld .thb{position:absolute;top:50%;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;
+  background:#e8d5b0;border:1px solid #8a6a3a;pointer-events:none}
+.dfoot{flex:0 0 auto;display:flex;gap:8px;padding:10px 14px calc(10px + var(--sib,0px));
+  border-top:1px solid #3a2e22}
+.dfoot button{flex:1;min-height:44px;font-size:13px;font-family:inherit;border-radius:8px;
+  border:1px solid #55432f;background:#2b2318;color:#f2e8da}
+.dfoot button:active{background:#3d3022}
+
+#toast{position:absolute;left:50%;top:44px;transform:translateX(-50%);z-index:120;max-width:86%;
+  background:#232130;border:2px solid var(--line);border-radius:var(--r1);padding:9px 14px;
+  font-size:12px;line-height:1.5;color:var(--txt);opacity:0;transition:opacity .2s;pointer-events:none;
+  text-align:center;box-shadow:var(--sh)}
+#toast.show{opacity:1}
+#toast.ok{border-color:rgba(123,224,138,.7)}
+#toast.bad{border-color:rgba(255,138,138,.7)}
+#stage *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+
+/* ==================== 游戏页：样式照抄 jieqi.html ==================== */
+/* 覆盖层：与菜单平级，各自独立布局。菜单靠冻结底板保证全屏不变形，
+   对局页是 canvas + 流式布局需跟随屏幕，硬塞进底板会把棋盘压扁。 */
+#app{position:absolute;inset:0;z-index:40;display:none;flex-direction:column;
+  touch-action:pan-y;overscroll-behavior-x:contain;background:#14100c}
+#app.on{display:flex}
+#app{font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
+/* #dock(45) 高于 #app(40)：菜单天生浮在游戏页之上。
+   进游戏页时把菜单内容藏掉，只留齿轮与全屏键（它们要常驻，故留在 dock 内）。 */
+#stage.gaming #head, #stage.gaming #menu, #stage.gaming #ver{display:none}
+.page{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:14px;min-height:0;overflow-y:auto}
+.sub{font-size:13px;color:#9c8a76;margin-bottom:22px;text-align:center;line-height:1.7}
+.card{width:100%;max-width:320px;background:#231b14;border:1px solid #3d3022;border-radius:12px;padding:14px;margin-bottom:10px}
+.card h3{margin:0 0 10px;font-size:14px;color:#e8b872;font-weight:600}
+.opt{display:flex;align-items:center;gap:8px;padding:10px 12px;border-radius:10px; background:linear-gradient(180deg,#2f2619,#282015);margin-bottom:7px; border:1px solid #4d3c28;box-shadow:0 1px 2px rgba(0,0,0,.28); cursor:pointer;-webkit-tap-highlight-color:transparent; transition:transform .12s ease,background .16s ease,border-color .16s ease,box-shadow .16s ease; position:relative;overflow:hidden}
+.opt.sel{background:linear-gradient(180deg,#4d3720,#43301c);border-color:#a8642a; box-shadow:0 2px 8px rgba(168,100,42,.28)}
+.opt .ic{flex:0 0 20px;font-size:15px;text-align:center;line-height:1}
+.opt .t{font-size:14px;color:#f2e8da}
+.opt .d2{font-size:11px;color:#9c8a76;margin-left:auto}
+.netbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 8px 8px; background:#1e1812;border-bottom:1px solid #3a2e22}
+.netbar .bk{flex:0 0 38px;width:38px;height:38px;border-radius:11px;border:1px solid #55432f; background:#3c2f22;color:#f2e8da;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
+.netbar .tt{flex:1;text-align:center;font-size:15px;font-weight:700;letter-spacing:3px;color:#f2e8da}
+.netbar .ph{flex:0 0 38px}
+.btn{background:#3c2f22;color:#f2e8da;border:1px solid #55432f;border-radius:8px;padding:9px 12px;flex:1 1 auto;min-width:64px}
+/* 旋转按钮独占第二行、与上面四个同宽并靠左。
+   max-width 会连 flex base size 一起收缩，导致它仍被挤在第一排，
+   所以改用「插一个 100% 宽的零高度断行元素」强制换行，宽度另算。 */
+.bottombar .br{flex:0 0 100%;height:0}
+.bottombar .btn.q{flex:0 0 auto;width:calc((100% - 18px) / 4)}
+.btn.pri{background:#a8642a;border-color:#c8813c;color:#fff;font-weight:600}
+.btn.sm{padding:7px 10px;font-size:13px}
+.topbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:#1e1812;border-bottom:1px solid #3a2e22}
+.topbar h1{font-size:16px;margin:0;font-weight:600;letter-spacing:1px}
+.mid{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.status{flex:0 0 auto;text-align:center;padding:5px 10px;font-size:13px;color:#d9c4a3;background:#1a1410;min-height:26px}
+.boardwrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:6px;min-height:0}
+.scorebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px; padding:5px 10px;font-size:12px;background:#1a1410;border-top:1px solid #332920}
+.caps{flex:0 0 auto;display:flex;gap:10px;padding:4px 10px;font-size:11px;color:#9c8a76;align-items:center;flex-wrap:wrap;background:#1a1410}
+.caps .grp{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.pc{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%; font-size:11px;border:1px solid #6b5233;background:#e8d5b0;color:#8b1a1a;line-height:1}
+.pc.bk{color:#1a1a1a}
+.pc.dk{background:#4a4038;color:#c9b8a0;border-color:#6a5c50}
+.bottombar{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:#1e1812;border-top:1px solid #3a2e22}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:70}
+.modal{width:100%;max-width:320px;background:#231b14;border:1px solid #55432f;border-radius:14px;padding:18px; max-height:84vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+.modal h3{margin:0 0 12px;font-size:16px;color:#e8b872}
+.modal .row{margin-top:12px}
+/* 日志弹窗：正方形（边长 min(92vw,340px)），左右占满、上下居中。
+   刻意不做右上角 ✕——框外上下都留 130px+ 可点区域，点遮罩即关，省一套关闭按钮代码。 */
+.logbox{width:min(86vw,340px);height:min(86vw,340px);flex:0 0 auto;background:#231b14;
+  border:1px solid #55432f;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
+.logbox .tip{font-size:12px;color:#9d8a6c;line-height:1.4;flex:0 0 auto}
+/* readonly 而非 disabled：可选中、可全选、可滚动，且 iOS 上不会弹键盘 */
+.logbox textarea{flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;resize:none;
+  background:#14100b;color:#c9b58a;border:1px solid #3a2e22;border-radius:8px;padding:8px;
+  font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  -webkit-user-select:text;user-select:text}
+.logbox .row{display:flex;gap:8px;flex:0 0 auto}
+.logbox .row button{flex:1 1 0;padding:10px 0;font-size:14px;font-weight:700;color:#ffe9c2;
+  background:#2c2318;border:1px solid #55432f;border-radius:10px}
+.btn:active{background:#55432f}
+canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touch-action:manipulation}
+.page{width:100%;max-width:none}
+.card{max-width:min(320px,92vw)}
+.modal{font-family:inherit}
+.btn{font-family:inherit;font-size:14px;cursor:pointer}
+.btn.pri{font-size:15px}
+.opt .t{font-weight:600} .boardwrap{position:relative} .readybtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;flex:0 0 auto;min-width:112px;padding:10px 18px;font-size:16px} .readybtn.on{background:#4b3a22;color:#c9b28a} .mput{width:100%;box-sizing:border-box;padding:9px 10px;background:#14100b;border:1px solid #55432f;border-radius:8px;color:#ffe9c2;font-size:15px;font-family:inherit;margin:2px 0 6px;outline:none} #toast.err{left:50%;top:46%;transform:translate(-50%,-50%);background:rgba(120,20,20,.94);color:#ff8b8b;border:1px solid #ff6b6b;font-size:16px;font-weight:700;padding:12px 20px} .row2{display:flex;gap:8px;margin:6px 0 2px} .row2>.btn{flex:1;min-width:0} .hint{font-size:12px;color:#8d7a63;line-height:1.6;margin:4px 2px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div id="dock">
+    <div id="plate">
+      <div id="head">
+        <h1>揭棋</h1>
+        <p class="sub">中国象棋变体·暗子按格位走子·走后翻开·相仕可过河</p>
+      </div>
+      <div id="menu">
+        <button class="mbtn" id="btnPve"><b>人机对战</b><span>单机练习</span></button>
+        <button class="mbtn" id="btnNet"><b>联机对战</b><span>双人实时对战</span></button>
+        <button class="mbtn hall" id="btnBack"><i class="sheen"></i><b><span class="arw">←</span>返回游戏大厅</b><span class="d">返回上级 · 选择其他游戏</span></button>
+          </div>
+      <div id="ver"></div>
+      <button id="btnSet" title="设置">⚙</button>
+      <button id="btnFs" title="进入全屏">⛶</button>
+
+    </div>
+  </div>
+  <!-- 设置抽屉：必须挂在 #stage 下（与 #dock 平级），不能留在 #plate 内。
+       #dock 带 transform，fixed 元素放进去会以 dock 为包含块而错位。 -->
+  <div id="mask"></div>
+  <div id="panel">
+    <div class="dhead"><h3>设置</h3><button id="btnDClose" type="button">✕</button></div>
+    <div class="dbody">
+      <div class="dgrp">
+        <h4>音效</h4>
+        <div class="dit"><div class="tt"><b>游戏音效</b><span>落子、翻子、吃子、将军、胜负等实时合成音</span></div>
+          <div class="sw" id="swSound"></div></div>
+        <div class="dit dit-rng"><div class="drng"><span class="lab" id="volVal">100%</span>
+          <div class="sld" id="rgVol" data-min="0" data-max="100" data-val="100">
+            <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div></div>
+      </div>
+      <div class="dgrp">
+        <h4>震动反馈</h4>
+        <div class="dit"><div class="tt"><b>手机震动</b><span id="vibDesc">走子、翻子、胜负时震动</span></div>
+          <div class="sw" id="swVib"></div></div>
+        <div class="dit dit-rng"><div class="drng"><span class="lab" id="vibVal">100ms</span>
+          <div class="sld" id="rgVib" data-min="0" data-max="100" data-val="100">
+            <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div>
+          <span class="dit-hint" id="vibHint"></span></div>
+      </div>
+      <div class="dgrp">
+        <h4>其他</h4>
+        <div class="dit dit-rng"><div class="drng"><span class="lab" id="thVal">8 线程</span>
+          <div class="sld" id="rgTh" data-min="1" data-max="16" data-val="8">
+            <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div>
+          <span class="dit-hint">修改后重启生效</span></div>
+      </div>
+    </div>
+    <div class="dfoot">
+      <button id="btnLog" type="button">诊断日志</button>
+      <button id="btnReset" type="button">恢复默认设置</button>
+    </div>
+  </div>
+  <!-- 测试模式抽屉：与设置抽屉同款（右侧滑出），挂 #stage 下同理。
+       里面放「清除引擎缓存」+ 引擎实时信息。 -->
+  <div id="tmask"></div>
+  <div id="tpanel">
+    <div class="dhead"><h3>测试模式</h3><button id="btnTClose" type="button">✕</button></div>
+    <div class="dbody">
+      <div class="dgrp">
+        <h4>引擎</h4>
+        <div class="dit dit-rng"><div class="tt"><b>当前引擎</b>
+          <span id="tEngState">—</span></div></div>
+        <div class="dit dit-rng"><div class="tt"><b>缓存</b>
+          <span id="tCacheInfo">—</span></div></div>
+      </div>
+      <div class="dgrp">
+        <h4>联机</h4>
+        <div class="dit"><div class="tt"><b>联机测试（机器人）</b>
+          <span>机器人走真实服务器与真实 P2P，巅峰棋圣</span></div></div>
+      </div>
+      <div class="dgrp">
+        <h4>缓存管理</h4>
+        <div class="dit"><div class="tt"><b>清除引擎缓存</b>
+          <span>删 IndexedDB + SW 缓存 + 内存实例，下次进人机重新下载</span></div></div>
+      </div>
+    </div>
+    <div class="dfoot">
+      <button id="btnNetTest" type="button">联机测试</button>
+      <button id="btnClearCache" type="button">清除引擎缓存</button>
+    </div>
+  </div>
+  <div id="app"></div>
+  <div id="toast"></div>
+</div>
+
+<script>
+(function () {
+'use strict';
+const $ = (s) => document.querySelector(s);
+const JIEQI_VER = 'v1.5.0';
+const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
+
+let toastTimer = 0;
+function toast(msg, kind) {
+  const t = $('#toast');
+  if (!t) return;
+  t.textContent = msg;
+  t.className = kind ? 'show ' + kind : 'show';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { t.className = ''; }, 2200);
+}
+
+/* ============ 诊断日志：事件码 + 短键名压缩，环形缓冲 2000 条 ============ */
+/* 设置状态：字段名与 jieqi.html 的 SETTINGS_DEFAULTS 一致，Snd/Hap 直接读它 */
+const ST = { sound:true, volume:100, vibrate:true, vibIntensity:100 };
+const PREF_KEY = 'jieqi-prefs-v1';
+function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify(ST)); }catch(e){} }
+function loadPrefs(){
+  try{
+    const o = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+    Object.keys(ST).forEach(k => { if(o[k] !== undefined) ST[k] = o[k]; });
+  }catch(e){}
+}
+loadPrefs();
+
+/* 导出文件名用的本地时间戳：YYYYMMDD_HHMMSS。
+   ① 必须用本地时间而不是 toISOString()——后者是 UTC，东八区会整整差 8 小时。
+   ② 时/分/秒之间不加冒号：实测 Chromium 下载时会把英文冒号强制替换成下划线，
+      导致同一分钟内多次导出互相覆盖；紧凑写法各平台都是合法文件名。 */
+function logStamp(){
+  var d = new Date();
+  var p2 = function(n){ return (n < 10 ? '0' : '') + n; };
+  return d.getFullYear() + p2(d.getMonth() + 1) + p2(d.getDate()) + '_'
+       + p2(d.getHours()) + p2(d.getMinutes()) + p2(d.getSeconds());
+}
+
+const LOG = {
+  buf: [], t0: Date.now(), max: 2000, dropped: 0,
+  // 环境头只在导出时生成一次，避免每条都写大段文本
+  env() {
+    const d = devicePixelRatio || 1, n = navigator;
+    return ['JQ|' + JIEQI_VER,
+      'ENV|w' + innerWidth + ' h' + innerHeight + ' scr' + screen.width + 'x' + screen.height +
+        ' dpr' + d + ' vv' + (visualViewport ? Math.round(visualViewport.height) : 0),
+      'CAP|fs' + (document.fullscreenEnabled ? 1 : 0) + ' wake' + (n.wakeLock ? 1 : 0) +
+        ' vib' + (n.vibrate ? 1 : 0) + ' ori' + (screen.orientation ? 1 : 0) +
+        ' clip' + (n.clipboard ? 1 : 0) + ' tz' + (-new Date().getTimezoneOffset() / 60),
+      'UA|' + (n.userAgent.match(/(Chrome|MicroMessenger|QQ|XiaoMi|Huawei|Safari|Firefox)\/[\d.]+/g) || ['?']).join(','),
+      'T0|' + this.t0].join('\n');
+  },
+  add(code, msg) {
+    const line = (Date.now() - this.t0) + '|' + code + (msg ? ' ' + msg : '');
+    this.buf.push(line);
+    if (this.buf.length > this.max) { this.buf.shift(); this.dropped++; }
+  },
+  dump() {
+    const tail = '\n--\nDROP|' + this.dropped + ' TOTAL|' + (this.buf.length + this.dropped) +
+      '\nCODES|I初始化 F全屏 T触摸 P面板 R滑块 L日志 E错误 V视口 M菜单 A帧 W警告 N跳转';
+    return this.env() + '\n' + this.buf.join('\n') + tail;
+  },
+  copy() {
+    const txt = this.dump();
+    const done = () => { this.add('L', 'copy=' + txt.length + 'B'); toast('日志已复制（' + txt.length + ' 字节）', 'ok'); };
+    // file:// 下 clipboard API 常不可用，textarea + execCommand 兜底
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(txt).then(done).catch(() => this._fallback(txt, done));
+    } else this._fallback(txt, done);
+  },
+  _fallback(txt, done) {
+    const ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.style.cssText = 'position:fixed;left:-9999px;top:0';
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) { }
+    ta.remove();
+    if (ok) done(); else { this.add('E', 'copy_fail'); toast('复制失败，请改用下载', 'bad'); }
+  },
+  download() {
+    const txt = this.dump();
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([txt], { type: 'text/plain;charset=utf-8' }));
+    a.download = '揭棋日志_' + logStamp() + '.txt';
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1000);
+    this.add('L', 'dl=' + txt.length + 'B');
+    toast('日志已下载（' + txt.length + ' 字节）', 'ok');
+  },
+  reset() { this.buf.length = 0; this.dropped = 0; this.t0 = Date.now(); this.add('L', 'reset'); }
+};
+window.onerror = (m, s, l, c, e) => LOG.add('E', 'msg=' + String(m).slice(0, 90) + ' @' + l + ':' + c);
+window.addEventListener('unhandledrejection', (e) => LOG.add('E', 'rej=' + String(e.reason).slice(0, 90)));
+
+const UI = {
+  // _fsdyCur 必须显式初始化为 0：否则 rAF 首帧未跑时日志会打出 undefined
+  _fsBusy: 0, _fsAt: 0, _fsArmed: false, _orientLocked: 0, wakeLock: null, _frames: 0, _fsdyCur: 0,
+
+  init() {
+    this._preloadMsg = null;
+    this._engineFail = null;
+    this._cacheInfo = null;
+    this.refreshVer();
+    this.freezeInsets();
+    LOG.add('I', 'ver=' + JIEQI_VER + ' w' + innerWidth + ' h' + innerHeight + ' dpr' + (devicePixelRatio || 1));
+    this.bind();
+    window.addEventListener('resize', () => this.layout());
+    window.addEventListener('orientationchange', () => setTimeout(() => this.layout(), 250));
+    if (window.visualViewport) {
+      window.visualViewport.addEventListener('resize', () => this.layout());
+      window.visualViewport.addEventListener('scroll', () => this.layout());
+    }
+    this.layout();
+    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
+      .forEach(ev => document.addEventListener(ev, () => { this.refreshFsBtn(); this.layoutAfterFs(); }));
+    this.refreshFsBtn();
+    LOG.add('I', 'ok');
+    /* 打开游戏立即开始预载引擎（用户选 1B）：让进人机时引擎已就绪。
+       有缓存时直接读 IndexedDB，不发网络请求；失败只更新页脚文案，不弹框打扰。 */
+    this.startPreload();
+    /* 缓存大小异步读一次，用于「未下载 / 已缓存 N KB」分支 */
+    this.refreshCacheInfo();
+  },
+
+  /* ---------- 版本号 = 引擎状态 + 版本号（jieqi 的 menuFootText 思路）---------- */
+  refreshVer() {
+    const el = $('#ver'); if (!el) return;
+    el.innerHTML = '<b>' + this.engFootText() + '</b>';
+  },
+  /* 加载进度文案压缩：引擎原始文案很长（如「正在从 9 个源并发下载引擎脚本（单线程）…」356px、
+     「下载引擎核心 429KB · cdn.jsdelivr」316px），320 小屏可用宽只有 272px 会被省略号截断。
+     这里抽关键量压成短语：进度优先取 KB 数，其余按语义给固定短词。 */
+  compactMsg(m) {
+    if (!m) return m;
+    const kb = /(\d+)\s*KB/.exec(m);
+    if (/多线程启动失败|改用单线程/.test(m)) return '降级单线程';
+    if (/正在编译|编译引擎/.test(m)) return '编译中';
+    if (/本地缓存/.test(m)) return '读缓存';
+    if (/校验通过/.test(m)) return '校验中';
+    if (/并发下载/.test(m)) return '下载中';
+    if (/下载引擎核心/.test(m)) return kb ? (kb[1] + 'KB') : '下载中';
+    if (/准备中|握手/.test(m)) return '启动中';
+    return (m.length > 12) ? (kb ? (kb[1] + 'KB') : '加载中') : m;
+  },
+  engFootText() {
+    let eng;
+    if (typeof ENGINE !== 'undefined' && ENGINE.worker) {
+      eng = (ENGINE.variant === 'mt')
+        ? ('当前引擎：' + ENGINE.threads + '核多线程 · Hash ' + ENGINE.hash + 'MB')
+        : ('当前引擎：单线程 · Hash ' + (ENGINE.hash || 32) + 'MB');
+    } else if (this._preloadMsg) {
+      eng = '当前引擎：加载中 ' + this.compactMsg(this._preloadMsg);
+    } else if (this._engineFail) {
+      eng = '当前引擎：' + this._engineFail;
+    } else if (this._cacheInfo && this._cacheInfo.has) {
+      eng = '当前引擎：已缓存 ' + Math.round(this._cacheInfo.total / 1024) + 'KB';
+    } else {
+      eng = '当前引擎：未下载';
+    }
+    return eng + ' · 版本号' + JIEQI_VER;
+  },
+  async refreshCacheInfo() {
+    try {
+      if (typeof Cache === 'undefined' || typeof ck !== 'function' || typeof variantOf !== 'function') return;
+      const V = variantOf();
+      const a = await Cache.get(ck(V.js.file));
+      const b = await Cache.get(ck(V.wasm.file));
+      const jsB = a ? a.byteLength : 0, wB = b ? b.byteLength : 0;
+      this._cacheInfo = { js: jsB, wasm: wB, total: jsB + wB, has: (wB > 100000) };
+    } catch (e) { this._cacheInfo = null; }
+    this.refreshVer();
+  },
+  /* 预载：进度实时刷新到页脚（用户选 2A）。失败只记状态（用户选 3A），进人机时重试。 */
+  startPreload() {
+    if (typeof ENGINE === 'undefined') return;
+    this._preloadMsg = null;
+    this._engineFail = null;
+    this.refreshVer();
+    ENGINE.preload((t) => {
+      this._preloadMsg = t;
+      this.refreshVer();
+    }).then(() => {
+      this._preloadMsg = null;
+      this._engineFail = null;
+      this.refreshVer();
+      this.refreshCacheInfo();
+      LOG.add('I', '预载完成 variant=' + ENGINE.variant + ' threads=' + ENGINE.threads + ' hash=' + ENGINE.hash);
+    }).catch((e) => {
+      this._preloadMsg = null;
+      this._engineFail = '下载失败';
+      this.refreshVer();
+      LOG.add('W', '预载失败（进人机时会重试） msg=' + String(e && e.message).slice(0, 80));
+    });
+  },
+
+  bind() {
+    // 触摸统一记日志：坐标 + target，便于复现问题
+    $('#dock').addEventListener('pointerdown', (e) => {
+      const id = (e.target.closest('button') || {}).id || (e.target.id) || '?';
+      LOG.add('T', id + ' x' + Math.round(e.clientX) + ' y' + Math.round(e.clientY) + ' sy' + Math.round(e.screenY || 0));
+    }, true);
+
+    $('#btnFs').addEventListener('click', (e) => { e.stopPropagation(); this.captureFsAnchor(e); this.toggleFs(); });
+    $('#btnSet').addEventListener('click', (e) => { e.stopPropagation(); this.openPanel(); });
+    $('#btnPve').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); Hap.tap(); LOG.add('M', 'pve'); this.openPveSetup(); });
+    $('#btnNet').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); Hap.tap(); LOG.add('M', 'net'); this.openNetSetup(); });
+    $('#btnBack').addEventListener('click', (e) => {
+      e.stopPropagation();
+      LOG.add('N', 'hall');
+      window.location.href = HALL_URL;
+    });
+
+    /* ---------- 测试模式隐藏入口：连点版本号 5 次（2 秒窗口）---------- */
+    /* 按钮不写在 HTML 里，而是运行时动态插 DOM —— 只 display:none 的话，
+       能探测隐藏元素的浏览器仍会把它列出来，等于没隐藏。
+       再点 5 次从 DOM 移除，双向清理。切换静默，只记日志（用户选 3B）。 */
+    this._verTaps = [];
+    this._testBtn = null;
+    // 线程数：读上次保存值，默认 8（原本只记日志不落盘，刷新会丢失）
+    try { this._thVal = parseInt(localStorage.getItem('jieqi-threads'), 10) || 8; } catch (_) { this._thVal = 8; }
+    $('#ver').addEventListener('click', (e) => {
+      e.stopPropagation();
+      const now = (performance.now ? performance.now() : Date.now());
+      this._verTaps = this._verTaps.filter(t => now - t < 2000);
+      this._verTaps.push(now);
+      if (this._verTaps.length >= 5) {
+        this._verTaps = [];
+        this._toggleTestBtn();
+      }
+    });
+
+    $('#mask').addEventListener('click', () => this.closePanel());
+    $('#btnDClose').addEventListener('click', () => this.closePanel());
+    $('#tmask').addEventListener('click', () => this.closeTest());
+    $('#btnTClose').addEventListener('click', () => this.closeTest());
+    $('#btnClearCache').addEventListener('click', () => this.clearEngineCache());
+    $('#btnNetTest').addEventListener('click', () => { this.closeTest(); this.openNetSetup(renderNetTest); });
+    $('#btnLog').addEventListener('click', () => this.onLog());
+    $('#btnReset').addEventListener('click', () => {
+      ST.sound = true; ST.volume = 100; ST.vibrate = true; ST.vibIntensity = 100;
+      savePrefs(); Snd.setVolume();
+      this.syncSettings();
+      LOG.reset(); LOG.add('R', 'reset_all');
+      toast('已恢复默认设置', 'ok');
+    });
+    this.syncSettings();
+    // 音效开关 → ST.sound；音量 → ST.volume（Snd 每次发声前读，拖动即时生效）
+    $('#swSound').addEventListener('click', () => {
+      ST.sound = !ST.sound; savePrefs(); LOG.add('R', 'sound=' + (ST.sound ? 1 : 0));
+      this.syncSettings();
+      if (ST.sound) Snd.tap();
+    });
+    this.bindSlider('#rgVol', (v) => { ST.volume = v; Snd.setVolume(); },
+      () => { savePrefs(); LOG.add('R', 'vol=' + ST.volume); }, (v) => { $('#volVal').textContent = v + '%'; });
+    // 震动 → ST.vibrate / ST.vibIntensity（0 = 关闭，100 = 最长 100ms，与 jieqi 一致）
+    $('#swVib').addEventListener('click', () => {
+      ST.vibrate = !ST.vibrate; savePrefs(); LOG.add('R', 'vib=' + (ST.vibrate ? 1 : 0));
+      this.syncSettings();
+      if (ST.vibrate) Hap.tap();
+    });
+    this.bindSlider('#rgVib', (v) => { ST.vibIntensity = v; this.updVibHint(); },
+      () => { savePrefs(); LOG.add('R', 'vibms=' + ST.vibIntensity); },
+      (v) => { $('#vibVal').textContent = v + 'ms'; });
+    this.bindSlider('#rgTh', null,
+      (v) => { this._thVal = v; try { localStorage.setItem('jieqi-threads', String(v)); } catch (_) {}
+               LOG.add('R', 'thread=' + v); },
+      (v) => { $('#thVal').textContent = v + ' 线程'; });
+
+  },
+
+  // 把 ST 的值刷回面板控件（进入面板与恢复默认时用）
+  syncSettings() {
+    $('#swSound').classList.toggle('on', !!ST.sound);
+    $('#swVib').classList.toggle('on', !!ST.vibrate);
+    this.setSlider('#rgVol', ST.volume, (v) => { $('#volVal').textContent = v + '%'; });
+    this.setSlider('#rgVib', ST.vibIntensity, (v) => { $('#vibVal').textContent = v + 'ms'; });
+    this.setSlider('#rgTh', this._thVal, (v) => { $('#thVal').textContent = v + ' 线程'; });
+    const ok = !!navigator.vibrate;
+    $('#vibDesc').textContent = ok ? '走子、翻子、胜负时震动' : '当前浏览器不支持震动（无 vibration API）';
+    this.updVibHint();
+  },
+  updVibHint() {
+    const v = this.getSlider('#rgVib');
+    $('#vibHint').textContent = navigator.vibrate
+      ? (v === 0 ? '已关闭：0 = 不震动' : '数值即震动时长：0 = 关闭震动，100 = 最长 100 毫秒')
+      : 'iPhone/iOS Safari 不支持震动';
+  },
+
+  /* ---- 自绘滑块：pointerdown + setPointerCapture 全程接管手势 ---- */
+  getSlider(sel) {
+    const el = $(sel); if (!el) return 0;
+    return parseInt(el.dataset.val || '0', 10);
+  },
+  setSlider(sel, v, fmt) {
+    const el = $(sel); if (!el) return;
+    const mn = +el.dataset.min, mx = +el.dataset.max;
+    v = Math.max(mn, Math.min(mx, Math.round(v)));
+    el.dataset.val = String(v);
+    const pct = mx === mn ? 0 : (v - mn) / (mx - mn);
+    const fil = el.querySelector('.fil'), thb = el.querySelector('.thb');
+    if (fil) fil.style.width = (pct * 100) + '%';
+    if (thb) thb.style.left = (pct * 100) + '%';
+    if (fmt) fmt(v);
+  },
+  bindSlider(sel, onInput, onChange, fmt) {
+    const el = $(sel); if (!el) return;
+    const self = this;
+    const mn = +el.dataset.min, mx = +el.dataset.max;
+    let fmtCb = fmt || (() => {});
+    const posToVal = (clientX) => {
+      const trk = el.querySelector('.trk');
+      const r = trk.getBoundingClientRect();
+      const p = r.width ? (clientX - r.left) / r.width : 0;
+      return Math.max(mn, Math.min(mx, Math.round(mn + p * (mx - mn))));
+    };
+    el.addEventListener('pointerdown', (e) => {
+      // 锁定该指针：手指滑出控件、滑到屏幕边缘都只驱动这个滑块
+      try { el.setPointerCapture(e.pointerId); } catch (_) {}
+      el._drag = true;
+      const v = posToVal(e.clientX);
+      self.setSlider(sel, v, fmtCb);
+      if (onInput) onInput(v);
+      e.preventDefault();
+    });
+    el.addEventListener('pointermove', (e) => {
+      if (!el._drag) return;
+      const v = posToVal(e.clientX);
+      if (v === self.getSlider(sel)) return;
+      self.setSlider(sel, v, fmtCb);
+      if (onInput) onInput(v);
+    });
+    const end = (e) => {
+      if (!el._drag) return;
+      el._drag = false;
+      try { el.releasePointerCapture(e.pointerId); } catch (_) {}
+      if (onChange) onChange(self.getSlider(sel));
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  },
+
+  /* ---------- 测试模式抽屉 ---------- */
+  openTest() {
+    this.renderTestInfo();
+    $('#tmask').classList.add('open');
+    $('#tpanel').classList.add('open');
+    LOG.add('P', 'test_panel=1');
+  },
+  closeTest() {
+    $('#tmask').classList.remove('open');
+    $('#tpanel').classList.remove('open');
+    LOG.add('P', 'test_close');
+  },
+  renderTestInfo() {
+    let st;
+    if (typeof ENGINE !== 'undefined' && ENGINE.worker) {
+      st = (ENGINE.variant === 'mt')
+        ? ('已加载 · ' + ENGINE.threads + ' 核多线程 · Hash ' + ENGINE.hash + 'MB')
+        : ('已加载 · 单线程 · Hash ' + (ENGINE.hash || 32) + 'MB');
+    } else if (this._preloadMsg) st = '加载中 · ' + this._preloadMsg;
+    else if (this._engineFail) st = '未加载 · ' + this._engineFail;
+    else st = '未加载';
+    if (typeof ENGINE !== 'undefined' && ENGINE.sourceLabel) st += '\n来源：' + ENGINE.sourceLabel;
+    const ver = (typeof ENGINE !== 'undefined' && ENGINE.variant) ? ('\n变体：' + ENGINE.variant) : '';
+    $('#tEngState').textContent = st + ver;
+    const ci = this._cacheInfo;
+    $('#tCacheInfo').textContent = (ci && ci.has)
+      ? ('已缓存 ' + Math.round(ci.total / 1024) + 'KB（js ' + Math.round(ci.js / 1024) + 'KB + wasm ' + Math.round(ci.wasm / 1024) + 'KB）')
+      : '无缓存';
+  },
+  /* 清除引擎缓存：IndexedDB + SW CacheStorage + 内存实例。
+     清完不自动重下（用户选 4A），下次进人机时才重新下载。 */
+  async clearEngineCache() {
+    LOG.add('R', 'clear_cache');
+    let idb = false, swc = false;
+    const keys = [];
+    try { await Cache.clear(); idb = true; } catch (e) { LOG.add('W', 'idb_clear_fail ' + e.message); }
+    try {
+      if (window.caches && caches.keys) {
+        const ks = await caches.keys();
+        for (const k of ks) { await caches.delete(k); keys.push(k); swc = true; }
+      }
+    } catch (e) { LOG.add('W', 'sw_clear_fail ' + e.message); }
+    if (typeof ENGINE !== 'undefined') {
+      ENGINE.ready = null; ENGINE.worker = null; ENGINE.fromCache = false;
+      ENGINE.sourceLabel = ''; ENGINE.lastError = null; ENGINE.hashSet = false;
+    }
+    this._cacheInfo = null;
+    this._preloadMsg = null;
+    this._engineFail = null;
+    this.refreshVer();
+    this.renderTestInfo();
+    toast('引擎缓存已清除');
+    LOG.add('I', 'clear_cache_done idb=' + idb + ' swc=' + swc + ' keys=' + keys.length);
+  },
+
+  openPanel() {
+    $('#mask').classList.add('open');
+    $('#panel').classList.add('open');
+    LOG.add('P', 'panel=1');
+  },
+  closePanel() {
+    $('#mask').classList.remove('open');
+    $('#panel').classList.remove('open');
+    LOG.add('P', 'close');
+  },
+
+  onLog() {
+    LOG.copy();          // 先自动复制；苹果等复制不成功的机型靠下面的文本框手动选
+    this.openLog();
+  },
+  /* 日志弹窗：正方形，中间文本框可直接选中/全选复制，底部两个按钮。
+     关闭方式只有「点框外的遮罩」——用 e.target===mask 一行判断，
+     不给内部元素逐个加阻止冒泡，省代码。 */
+  openLog() {
+    const txt = LOG.dump();
+    const mask = document.createElement('div');
+    mask.className = 'mask';
+    const box = document.createElement('div');
+    box.className = 'logbox';
+    box.innerHTML = '<div class="tip">日志已复制到剪切板，可以粘贴给开发者</div>' +
+      '<textarea readonly spellcheck="false"></textarea>' +
+      '<div class="row"><button type="button" id="lgSel">全选</button>' +
+      '<button type="button" id="lgDl">下载为txt</button></div>';
+    const ta = box.querySelector('textarea');
+    ta.value = txt;
+    mask.appendChild(box);
+    /* 必须挂 #stage 而不是 body：全屏元素是 #stage，真实全屏时浏览器只绘制它及其子孙，
+       挂 body 上的弹窗会整个不显示（设置抽屉当初就是因为这个挪进 #stage 的）。 */
+    (document.getElementById('stage') || document.body).appendChild(mask);
+    LOG.add('L', 'logbox=' + txt.length + 'B');
+    mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
+    box.querySelector('#lgSel').addEventListener('click', () => {
+      ta.focus(); ta.select();
+      try { ta.setSelectionRange(0, txt.length); } catch (e) { }
+    });
+    box.querySelector('#lgDl').addEventListener('click', () => LOG.download());
+  },
+
+  // 安全区进出全屏会变，启动时量一次冻结成 px，底板内一律用定值
+  freezeInsets() {
+    const probe = (css) => {
+      const d = document.createElement('div');
+      d.style.cssText = 'position:fixed;left:-9999px;' + css;
+      document.body.appendChild(d);
+      const r = d.getBoundingClientRect();
+      d.remove();
+      return r;
+    };
+    const rs = document.documentElement.style;
+    rs.setProperty('--sit', Math.round(probe('top:0;width:1px;height:env(safe-area-inset-top,0px)').height) + 'px');
+    rs.setProperty('--sib', Math.round(probe('bottom:0;width:1px;height:env(safe-area-inset-bottom,0px)').height) + 'px');
+    rs.setProperty('--sir', Math.round(probe('right:0;width:env(safe-area-inset-right,0px);height:1px').width) + 'px');
+  },
+
+  // 按可靠性依次取：全屏元素实测 → visualViewport → window
+  viewport() {
+    const fsEl = document.fullscreenElement || document.webkitFullscreenElement ||
+      document.mozFullScreenElement || document.msFullscreenElement;
+    let w = 0, h = 0;
+    if (fsEl && fsEl.clientWidth > 0 && fsEl.clientHeight > 0) {
+      w = fsEl.clientWidth; h = fsEl.clientHeight;
+    } else if (window.visualViewport && window.visualViewport.width > 0) {
+      w = Math.round(window.visualViewport.width); h = Math.round(window.visualViewport.height);
+    }
+    if (!w || !h) { w = window.innerWidth; h = window.innerHeight; }
+    return { w: w, h: h };
+  },
+
+  layout() {
+    const v = this.viewport();
+    /* 底板只在「非全屏、不在过渡中、且补偿已归零」时重冻。
+       补偿未归零就重冻会量到全屏尺寸（实测退出后偏 85px 且回不来）。 */
+    if (!this.isFs() && !this._raf && !this._fsBusy && !this._fsdyCur) {
+      if (this._pw !== v.w || this._ph !== v.h) {
+        this._pw = v.w; this._ph = v.h;
+        const rs = document.documentElement.style;
+        rs.setProperty('--plateW', v.w + 'px');
+        rs.setProperty('--plateH', v.h + 'px');
+        if (this._lastW !== v.w || this._lastH !== v.h) {
+          this._lastW = v.w; this._lastH = v.h;
+          LOG.add('V', 'w' + v.w + ' h' + v.h + ' sy' + Math.round(this.screenTop()));
+        }
+      }
+    }
+    // 标题与菜单实测高度，供 CSS 防碰撞下限使用（标题会随屏宽换行变高）
+    const rs = document.documentElement.style;
+    const hh = Math.round($('#head').getBoundingClientRect().height);
+    const mh = Math.round($('#menu').getBoundingClientRect().height);
+    if (this._hh !== hh) { this._hh = hh; rs.setProperty('--headH', hh + 'px'); }
+    if (this._mh !== mh) { this._mh = mh; rs.setProperty('--menuH', mh + 'px'); }
+    // 退出全屏时视口会缩回去，重新拉起监视让补偿一路回到 0
+    if (!this.isFs() && this._fsdyCur && !this._raf) this.startAnchorWatch();
+    this.applyFsAnchor();
+  },
+
+  /* ---------------- 全屏锚定 ---------------- */
+  /* 底板是刚体，只需抵消视口顶边的位移，无需量任何元素 */
+  captureFsAnchor(e) {
+    if (this.isFs() || this._raf) return;   // 退出时或过渡未走完时不重记
+    this._anchorSy = this.screenTop();
+    /* 交叉校验：锚定全靠 window.screenY，而事件的 screenY−clientY 是它的独立取值。
+       两者在正常环境应相等；真机若不一致说明 screenY 不可靠、锚定会偏，写进日志好定位。 */
+    if (e && typeof e.screenY === 'number' && typeof e.clientY === 'number' && e.screenY > 0) {
+      const evOff = Math.round(e.screenY - e.clientY);
+      if (Math.abs(evOff - Math.round(this._anchorSy)) > 1) {
+        LOG.add('W', 'off_diff sy=' + Math.round(this._anchorSy) + ' ev=' + evOff);
+      }
+    }
+    this.startAnchorWatch();
+  },
+
+  // fsdy = 当前视口顶边 − 按下时的视口顶边，使底板顶边物理坐标恒定
+  applyFsAnchor(sy) {
+    if (this._anchorSy == null) return;
+    if (sy === undefined) sy = this.screenTop();
+    const next = Math.round(sy) - this._anchorSy;
+    if (next === this._fsdyCur) return;
+    this._fsdyCur = next;
+    $('#dock').style.setProperty('--fsdy', next + 'px');
+  },
+
+  /* 逐帧校正：不依赖 resize/visualViewport 事件（真机上可能滞后或不上报）。
+     只读 screenY，不触碰布局，因此不引起重排。 */
+  startAnchorWatch() {
+    if (this._raf) return;
+    const t0 = Date.now();
+    let still = 0, last = null;
+    const step = () => {
+      this._frames++;
+      const sy = this.screenTop();
+      still = (sy === last) ? still + 1 : 0;
+      last = sy;
+      this.applyFsAnchor(sy);
+      if (still > 30 || Date.now() - t0 > 2500) {
+        LOG.add('A', 'raf_stop frames=' + this._frames + ' fsdy=' + this._fsdyCur);
+        this.stopAnchorWatch();
+        return;
+      }
+      this._raf = requestAnimationFrame(step);
+    };
+    this._raf = requestAnimationFrame(step);
+  },
+  stopAnchorWatch() {
+    if (this._raf) cancelAnimationFrame(this._raf);
+    this._raf = 0;
+  },
+
+  // 0 是合法值（全屏时就该是 0），用 || 会跳过它去捡 screenTop 上的脏值
+  screenTop() {
+    if (typeof window.screenY === 'number' && isFinite(window.screenY)) return window.screenY;
+    if (typeof window.screenTop === 'number' && isFinite(window.screenTop)) return window.screenTop;
+    return 0;
+  },
+
+  // fullscreenchange 到达时部分内核尺寸还没更新完，补三次延迟重排兜底
+  layoutAfterFs() {
+    this.layout();
+    [100, 300, 600].forEach(ms => setTimeout(() => this.layout(), ms));
+  },
+
+  isFs() {
+    return !!(document.fullscreenElement || document.webkitFullscreenElement ||
+      document.mozFullScreenElement || document.msFullscreenElement ||
+      document.webkitCurrentFullScreenElement);
+  },
+
+  exitFs() {
+    const d = document;
+    const f = d.exitFullscreen || d.webkitExitFullscreen || d.webkitCancelFullScreen ||
+      d.mozCancelFullScreen || d.msExitFullscreen;
+    if (!f) return Promise.reject(new Error('浏览器不支持退出全屏'));
+    try {
+      const r = f.call(d);
+      return (r && r.then) ? r : Promise.resolve(true);
+    } catch (e) { return Promise.reject(e); }
+  },
+
+  async toggleFs() {
+    // 节流：反复切换时浏览器的全屏请求会互相打架，短时间内重复点击直接忽略
+    const now = Date.now();
+    if (this._fsBusy || (this._fsAt && now - this._fsAt < 450)) {
+      LOG.add('F', 'skip');
+      return;
+    }
+    this._fsBusy = 1; this._fsAt = now;
+    try { await this._toggleFsInner(); } finally { this._fsBusy = 0; }
+  },
+  async _toggleFsInner() {
+    const wasFs = this.isFs();
+    let ok = false;
+    if (wasFs) {
+      // 以浏览器的真实状态为准，不看返回值：返回键会先被浏览器自己退出全屏
+      await this.exitFs().catch(() => { });
+      ok = !this.isFs();
+      if (!ok) toast('退出全屏失败，可试试系统的返回键或下拉状态栏', 'bad');
+    } else {
+      ok = await this.tryFs().catch(() => false);
+      if (!ok) {
+        toast('全屏被拒绝，请再点一次或改用浏览器菜单里的「全屏」', 'bad');
+        this.armFsOnTap();
+      }
+    }
+    LOG.add('F', (wasFs ? 'out' : 'in') + '=' + (ok ? 1 : 0) + ' fsdy=' + this._fsdyCur +
+      ' sy=' + Math.round(this.screenTop()) + ' vh=' + this.viewport().h);
+    if (ok && !wasFs) {
+      // 锁竖屏（本页是竖屏版面，锁横屏会把画面拧横），失败很常见不能中断流程
+      try {
+        const so = screen.orientation;
+        if (so && so.lock && !(this._orientLocked && /portrait/.test(so.type || ''))) {
+          const r = so.lock('portrait');
+          if (r && r.then) r.then(() => { this._orientLocked = 1; }).catch(() => { });
+          else this._orientLocked = 1;
+        }
+      } catch (e) { }
+      try { if (navigator.wakeLock && !this.wakeLock) this.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { }
+    }
+    this.refreshFsBtn();
+    this.layout();
+  },
+
+  refreshFsBtn() {
+    const b = $('#btnFs');
+    const on = this.isFs();
+    b.classList.toggle('on', on);
+    b.title = on ? '退出全屏' : '进入全屏';
+  },
+
+  // 全屏对象优先选 #stage：整块版面都在它里面，坐标系连续不跳
+  tryFs() {
+    if (this.isFs()) return Promise.resolve(true);
+    const try1 = (node) => {
+      if (!node) return null;
+      const f = node.requestFullscreen || node.webkitRequestFullscreen ||
+        node.webkitRequestFullScreen || node.msRequestFullscreen || node.mozRequestFullScreen;
+      if (!f) return null;
+      try {
+        const r = f.call(node, { navigationUI: 'hide' });
+        return (r && r.then) ? r : Promise.resolve(true);
+      } catch (e) { return Promise.reject(e); }
+    };
+    const p1 = try1($('#stage'));
+    if (!p1) return Promise.resolve(false);
+    return p1.then(() => true).catch(() => {
+      const p2 = try1(document.documentElement);
+      if (!p2) return Promise.resolve(false);
+      return p2.then(() => true).catch(() => {
+        const p3 = try1(document.body);
+        return p3 ? p3.then(() => true).catch(() => false) : Promise.resolve(false);
+      });
+    });
+  },
+
+  // 打开人机难度设置页：#app 覆盖在菜单之上，全屏按钮仍常驻
+  /* 动态插入/移除测试模式按钮。整组居中（用户选 2B），
+     故按钮增减时其余三个会跟着上移/下移约半个按钮高 —— 这是预期的。 */
+  _toggleTestBtn() {
+    const menu = $('#menu');
+    if (!menu) return;
+    if (this._testBtn) {
+      this._testBtn.remove();
+      this._testBtn = null;
+      LOG.add('M', 'test_off');
+      return;
+    }
+    const b = document.createElement('button');
+    b.className = 'mbtn';
+    b.id = 'btnTest';
+    b.innerHTML = '<b>测试模式</b><span>调试用</span>';
+    b.addEventListener('click', (e) => { e.stopPropagation(); LOG.add('M', 'test'); this.openTest(); });
+    menu.appendChild(b);
+    this._testBtn = b;
+    LOG.add('M', 'test_on');
+  },
+
+  openPveSetup() {
+    app.className = 'on';
+    $('#stage').classList.add('gaming');
+    try{ document.body.classList.add('playing'); }catch(e){}
+    renderPveSetup();
+    this.layout();
+  },
+  /* #app 默认 display:none，只有 .on 才画得出来；联机页与联机测试页共用这一套开关 */
+  openNetSetup(fn) {
+    app.className = 'on';
+    $('#stage').classList.add('gaming');
+    try{ document.body.classList.add('playing'); }catch(e){}
+    (fn || renderNetSetup)();
+    this.layout();
+  },
+
+  // 全屏被拒后挂一次性监听：下次真实触摸时一定有手势，就地再试一次
+  armFsOnTap() {
+    if (this._fsArmed) return;
+    this._fsArmed = true;
+    const go = () => {
+      this._fsArmed = false;
+      ['pointerdown', 'touchstart'].forEach(t => document.removeEventListener(t, go, true));
+      this.tryFs().then(r => { if (r) { this.layout(); toast('已进入全屏', 'ok'); } }).catch(() => { });
+    };
+    ['pointerdown', 'touchstart'].forEach(t => document.addEventListener(t, go, true));
+  }
+};
+
+
+function renderPveSetup(){
+  clearApp();
+
+  
+  netBar('人 机 对 战', renderHome);
+
+  var page = el('div','page');
+  page.style.justifyContent='flex-start';
+  var LV_ICON = { easy:'🌱', normal:'🔥', hard:'👑', nightmare:'👹', peak:'🐉' };
+  var c1 = el('div','card'); c1.appendChild(el('h3','','难度'));
+  c1.appendChild(optRow(
+    Object.keys(LEVELS).map(function(k){ return {key:k, icon:LV_ICON[k], label:LEVELS[k].name, desc:LEVELS[k].desc}; }),
+    G.level, function(k){ G.level=k; log('I','选择难度',{level:k}); renderPveSetup(); }));
+  var c2 = el('div','card'); c2.appendChild(el('h3','','我执'));
+  var o2 = optRow([
+    {key:'red',   icon:'🔴', label:'红方（先手）', desc:''},
+    {key:'black', icon:'⚫', label:'黑方（后手）', desc:''}
+  ], G.humanColor, function(k){ G.humanColor=k; log('I','选择执子',{color:k}); renderPveSetup(); });
+  /* 红黑同一行，各占一半，省出一行的高度 */
+
+  o2.style.cssText='display:flex;gap:8px';
+  [].forEach.call(o2.children, function(x){ x.style.cssText='flex:1;min-width:0'; });
+  c2.appendChild(o2);
+  page.appendChild(c1); page.appendChild(c2);
+
+  var go = el('button','btn pri','开始对局'); go.style.maxWidth='320px';
+  /* .btn 默认 flex:1 1 auto，纵向容器里会被拉伸：视口越高按钮越胖，全屏后可达 109px */
+
+  go.style.flex='0 0 auto';
+  go.onclick = startPve;
+  page.appendChild(go);
+  app.appendChild(page);
+}
+/* ==================== 联机：MQTT 信令 + 原生 WebRTC P2P（无 PeerJS） ==================== */
+/* 设计：MQTT 只负责「发现房间 + 交换 SDP/ICE」；握手完成后棋步走 DataChannel 直连，不过服务器。
+   房间目录靠 MQTT retained：房主上线贴条、下线撕条，加入方订阅一次即拿到全量在线房间。 */
+var MQTT_BROKERS = [
+  { name:'emqx',      url:'wss://broker.emqx.io:8084/mqtt' },
+  { name:'mosquitto', url:'wss://test.mosquitto.org:8081/mqtt' },
+  { name:'hivemq',    url:'wss://broker.hivemq.com:8884/mqtt' }
+];
+var MQT = 'jq1/';                                   /* 主题前缀 */
+function rmDir(t){ return MQT + 'dir/' + t; }
+function rmSig(t, k){ return MQT + 'room/' + t + '/' + k; }
+function rndId(n){ var c='abcdefghijklmnopqrstuvwxyz0123456789', s=''; for(var i=0;i<n;i++) s += c[(Math.random()*36)|0]; return s; }
+function roomName(i){ return 'JQ' + ('00' + i).slice(-3); }
+/* --- MQTT 3.1.1 最小实现：只用 QoS0，够跑 retained 目录与信令 --- */
+function mqLen(n){ var b=[]; do{ var d=n%128; n=(n-d)/128; if(n>0) d|=128; b.push(d); }while(n>0); return b; }
+function mqUtf(s){ var u=[]; for(var i=0;i<s.length;i++){ var c=s.charCodeAt(i);
+    if(c<128) u.push(c); else if(c<2048) u.push(192|(c>>6), 128|(c&63)); else u.push(224|(c>>12), 128|((c>>6)&63), 128|(c&63)); }
+  return [u.length>>8, u.length&255].concat(u); }
+function mqPkt(head, vb){ return [head].concat(mqLen(vb.length), vb); }
+function mqConnect(cid){ return mqPkt(0x10, [0,4,77,81,84,84, 4, 2, 0, 60].concat(mqUtf(cid))); }
+function mqSub(pk, topics){ var vb=[pk>>8, pk&255]; topics.forEach(function(t){ vb = vb.concat(mqUtf(t), [1]); }); return mqPkt(0x82, vb); }
+function mqPub(topic, payload, retain){
+  var pl = (typeof payload === 'string') ? (function(){ var u=[]; for(var i=0;i<payload.length;i++) u.push(payload.charCodeAt(i)&255); return u; })() : payload;
+  return mqPkt(0x30 | (retain?1:0), mqUtf(topic).concat(pl));
+}
+function mqPing(){ return [0xC0, 0]; }
+function mqDisc(){ return [0xE0, 0]; }
+/* 解析字节流（可能粘包）：逐包吐出 {t, body} */
+function mqParse(buf){ var out=[], i=0, b=new Uint8Array(buf);
+  while(i < b.length){ var t=b[i++]; var mult=1, rl=0, d;
+    do{ d=b[i++]; rl += (d&127)*mult; if(d&128) mult*=128; else break; }while(i<b.length);
+    out.push({ t:t, body:b.subarray(i, i+rl) }); i += rl; }
+  return out; }
+function mqTopic(body){ var n=(body[0]<<8)|body[1]; var s=''; for(var k=2;k<2+n;k++) s += String.fromCharCode(body[k]);
+  var pl=''; for(var k2=2+n;k2<body.length;k2++) pl += String.fromCharCode(body[k2]); return { topic:s, payload:pl }; }
+var NET = {
+  ws:null, broker:null, ok:false, cid:rndId(10), pk:1, onMsg:null, onOpen:null, onClose:null, pingT:0,
+  connect: function(brokers, done){
+    var self=this; var i=0; var finished=false;
+    function tryNext(){
+      if(finished) return;
+      if(i >= brokers.length){ done(null); return; }
+      var bk = brokers[i++]; var ws=null; var settled=false;
+      try{ ws = new WebSocket(bk.url, 'mqtt'); }catch(e){ tryNext(); return; }
+      ws.binaryType = 'arraybuffer';
+      var to = setTimeout(function(){ if(!settled){ settled=true; try{ ws.close(); }catch(e){} tryNext(); } }, 6000);
+      ws.onopen = function(){ if(settled) return;
+        try{ ws.send(new Uint8Array(mqConnect(self.cid)).buffer); }catch(e){}
+        /* 等 CONNACK */
+        var t2 = setTimeout(function(){ if(!settled){ settled=true; try{ws.close();}catch(e){} tryNext(); } }, 5000);
+        ws.onmessage = function(ev){
+          var ps = mqParse(ev.data);
+          for(var k=0;k<ps.length;k++){ if((ps[k].t>>4)===2){   /* CONNACK */
+            if(settled) return; settled=true; clearTimeout(to); clearTimeout(t2);
+            self.ws=ws; self.broker=bk; self.ok=true; finished=true;
+            ws.onmessage = function(e2){ var q=mqParse(e2.data); for(var j=0;j<q.length;j++){
+              if((q[j].t>>4)===3){ var m=mqTopic(q[j].body); self.onMsg && self.onMsg(m.topic, m.payload); } } };
+            ws.onclose = function(){ self.ok=false; self.ws=null; clearInterval(self.pingT); self.onClose && self.onClose(); };
+            self.pingT = setInterval(function(){ try{ ws.send(new Uint8Array(mqPing()).buffer); }catch(e){} }, 45000);
+            done(bk); return;
+          } }
+        };
+      };
+      ws.onerror = function(){ if(!settled){ settled=true; clearTimeout(to); try{ws.close();}catch(e){} tryNext(); } };
+      ws.onclose = function(){ if(!settled){ settled=true; clearTimeout(to); tryNext(); } };
+    }
+    tryNext();
+  },
+  sub: function(topics){ if(!this.ok||!this.ws) return; try{ this.ws.send(new Uint8Array(mqSub(this.pk++, topics)).buffer); }catch(e){} },
+  pub: function(topic, payload, retain){ if(!this.ok||!this.ws) return; try{ this.ws.send(new Uint8Array(mqPub(topic, payload, retain)).buffer); }catch(e){} },
+  close: function(){ clearInterval(this.pingT); if(this.ws){ try{ this.ws.send(new Uint8Array(mqDisc()).buffer); }catch(e){} try{ this.ws.close(); }catch(e){} } this.ws=null; this.ok=false; }
+};
+/* --- 原生 WebRTC：房主 offer / 客机 answer，ICE 双向灌 --- */
+var ICE_CFG = { iceServers:[ { urls:'stun:stun.l.google.com:19302' }, { urls:'stun:stun1.l.google.com:19302' } ] };
+var RTC = { pc:null, dc:null, role:null, onOpen:null, onData:null, onState:null,
+  init: function(role, onIce){
+    this.close(); var self=this; this.role=role;
+    var pc = new RTCPeerConnection(ICE_CFG); this.pc = pc;
+    pc.onicecandidate = function(e){ if(e.candidate && onIce) onIce(e.candidate.toJSON ? e.candidate.toJSON() : e.candidate); };
+    pc.onconnectionstatechange = function(){ self.onState && self.onState(pc.connectionState); };
+    if(role === 'host'){
+      var dc = pc.createDataChannel('jieqi', { ordered:true }); this.bind(dc);
+    }else{
+      pc.ondatachannel = function(e){ self.bind(e.channel); };
+    }
+    return pc;
+  },
+  bind: function(dc){ var self=this; this.dc=dc;
+    dc.onopen = function(){ self.onOpen && self.onOpen(); };
+    dc.onmessage = function(e){ self.onData && self.onData(e.data); };
+  },
+  offer: function(){ var pc=this.pc; var s=this; return pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){ return pc.localDescription; }); }); },
+  answer: function(remote){ var pc=this.pc; return pc.setRemoteDescription(remote).then(function(){ return pc.createAnswer(); }).then(function(a){ return pc.setLocalDescription(a).then(function(){ return pc.localDescription; }); }); },
+  addIce: function(c){ if(!this.pc || !this.pc.remoteDescription) return; try{ var p=this.pc.addIceCandidate(c); if(p && p.catch) p.catch(function(){}); }catch(e){} },
+  send: function(o){ if(this.dc && this.dc.readyState==='open'){ try{ this.dc.send(typeof o==='string'?o:JSON.stringify(o)); return true; }catch(e){} } return false; },
+  close: function(){ try{ if(this.dc){ this.dc.onopen=null; this.dc.onmessage=null; this.dc.close(); } }catch(e){}
+    try{ if(this.pc){ this.pc.onicecandidate=null; this.pc.onconnectionstatechange=null; this.pc.ondatachannel=null; this.pc.close(); } }catch(e){}
+    this.pc=null; this.dc=null; this.role=null; }
+};
+/* --- 联机会话：房间占用、目录、准备、走子同步 --- */
+var ROOM_TTL = 45000, ROOM_BEACON = 15000;   /* 房主每 15 秒续一次条；超过 45 秒没续视为僵尸房（房主掉线/强杀页面） */
+var ON = { on:false, room:null, role:null, peerReady:false, myReady:false, started:false, color:'red', oppCid:null, testMode:false, beaconT:0 };
+function netReset(){ ON.on=false; ON.room=null; ON.role=null; ON.peerReady=false; ON.myReady=false; ON.started=false; ON.oppCid=null; }
+function netTip(txt, red){ var t=document.getElementById('net-tip'); if(!t) return; t.textContent=txt||''; t.style.display = txt?'block':'none'; t.style.color = red?'#ff6b6b':'#f0c98a'; }
+/* 失败提示也走状态行：红字 3 秒后自动清空（不再弹居中气泡） */
+function netToast(msg){ var t=document.getElementById('net-tip'); if(!t) return; netTip(msg); t.style.color='#ff6b6b'; clearTimeout(_tt); _tt=setTimeout(function(){ netTip(''); }, 3000); }
+function renderNetSetup(){
+  clearApp(); netBar('联 机 对 战', renderHome);
+  var page = el('div','page'); page.style.justifyContent='flex-start';
+  var c1 = el('div','card'); c1.appendChild(el('h3','','联机对战'));
+  var row = el('div','row2');
+  var bc = el('button','btn pri','创建房间'); bc.onclick = function(){ Snd.tap(); Hap.tap(); netDoCreate(manualRoom()); };
+  var bj = el('button','btn pri','加入房间'); bj.onclick = function(){ Snd.tap(); Hap.tap(); netDoJoin(manualRoom()); };
+  row.appendChild(bc); row.appendChild(bj); c1.appendChild(row);
+  var tip = el('div','',''); tip.id='net-tip'; tip.className='hint'; tip.style.cssText='display:none;text-align:center;font-weight:700';
+  c1.appendChild(tip);
+  page.appendChild(c1);
+  var bm = el('button','btn','手动输入房间号（约人对战）');
+  bm.style.maxWidth='320px'; bm.style.flex='0 0 auto';
+  bm.onclick = function(){ Snd.tap(); Hap.tap();
+    var box = document.getElementById('netRoomIn');
+    if(box){ box.parentNode.removeChild(box); return; }
+    box = el('div','row'); box.id = 'netRoomIn';
+    var inp = el('input'); inp.id = 'netRoomVal'; inp.className = 'mput';
+    inp.placeholder = '只能填大小写字母和数字'; inp.setAttribute('autocomplete','off');
+    inp.oninput = function(){
+      var c = inp.value.replace(/[^A-Za-z0-9]/g, '');
+      if(c !== inp.value){ inp.value = c; toast('非法字符，只能填大小写字母和数字'); }
+    };
+    box.appendChild(inp);
+    c1.insertBefore(box, row);
+  };
+  page.appendChild(bm);
+  app.appendChild(page);
+}
+/* --- 连服务器：三个公共 broker 竞速，谁先握手完用谁 --- */
+var _netConn = null, _tt = 0;
+function netEnsure(cb){
+  if(NET.ok){ cb(true); return; }
+  netTip(''); toast('正在连接服务器…');
+  NET.connect(MQTT_BROKERS, function(bk){
+    if(!bk){ toast('服务器连接失败，请检查网络'); cb(false); return; }
+    log('I','MQTT 已连接', { broker:bk.name }); cb(true);
+  });
+}
+/* 手动填写的房间号：只查/占这一个房，不走 JQ001-JQ100 扫描 */
+function manualRoom(){ var e = document.getElementById('netRoomVal'); return e ? (e.value || '').trim() : ''; }
+function netManual(rm, host){
+  var got = null;
+  NET.onMsg = function(t, p){ if(t === rmDir(rm) && p) got = p; };
+  NET.sub([rmDir(rm)]);
+  netTip((host ? '正在创建' : '正在加入') + rm);
+  setTimeout(function(){
+    var o = null; try{ o = got ? JSON.parse(got) : null; }catch(e){}
+    var stale = !o || (o.ts && Date.now() - o.ts > ROOM_TTL);
+    if(host ? (!stale && o.owner !== NET.cid) : stale){ netToast(host ? '房间号已经被使用' : ('房间 ' + rm + ' 没人开')); return; }
+    if(!host && o.full){ netToast('房间已满'); return; }
+    if(host) NET.pub(rmDir(rm), JSON.stringify({room:rm, owner:NET.cid, ts:Date.now()}), true);
+    netEnterGame(rm, host ? 'host' : 'guest');
+  }, 1200);
+}
+/* --- 创建房间：取目录 → 挑最小空号 → retained 占位 → 二次确认防撞 --- */
+function netDoCreate(fixed){
+  netEnsure(function(ok){ if(!ok) return;
+    if(fixed){ netManual(fixed, true); return; }
+    var seen = {}, got = false;
+    NET.onMsg = function(topic, payload){
+      if(topic.indexOf(MQT+'dir/')===0) seen[topic.slice((MQT+'dir/').length)] = payload;
+    };
+    NET.sub([MQT+'dir/+']);
+    netTip('正在创建房间…');
+    setTimeout(function(){
+      var used = {}; Object.keys(seen).forEach(function(k){
+        var o=null; try{ o=JSON.parse(seen[k]); }catch(e){}
+        if(!o){ if(seen[k]) used[k]=1; return; }
+        if(o.ts && Date.now()-o.ts > ROOM_TTL) return;      /* 僵尸房：房主掉线没续条 */
+        used[k]=1;
+      });
+      var start = fixed || 1, end = fixed || 100, pick = 0;
+      for(var i=start;i<=end;i++){ if(!used[roomName(i)]){ pick=i; break; } }
+      if(!pick){ netToast('房间已满，没有空房'); return; }
+      netClaim(pick, start, end, used);
+    }, 1300);
+  });
+}
+function netClaim(i, start, end, used){
+  var rm = roomName(i);
+  var stamp = { room:rm, owner:NET.cid, ts:Date.now() };
+  NET.pub(rmDir(rm), JSON.stringify(stamp), true);
+  netTip('正在占用 ' + rm + '…');
+  setTimeout(function(){
+    /* 二次确认：若 retained 里的 owner 不是自己，说明别人同时占了，顺延下一个 */
+    var mine = null;
+    NET.onMsg = function(topic, payload){ if(topic===rmDir(rm) && payload){ try{ mine = JSON.parse(payload); }catch(e){ mine={owner:payload}; } } };
+    NET.sub([rmDir(rm)]);
+    setTimeout(function(){
+      if(mine && mine.owner && mine.owner !== NET.cid){
+        var nx = i+1;
+        while(nx<=end && used[roomName(nx)]) nx++;
+        if(nx<=end) netClaim(nx, start, end, used);
+        else { netToast('房间已满，没有空房'); }
+        return;
+      }
+      netEnterGame(rm, 'host');
+    }, 700);
+  }, 350);
+}
+/* --- 加入房间：订阅目录拿全量在线房间，取最小号；扫三轮仍空则红色提示 --- */
+function netDoJoin(fixed){
+  netEnsure(function(ok){ if(!ok) return;
+    if(fixed){ netManual(fixed, false); return; }
+    var round = 0;
+    function scan(){
+      round++;
+      var seen = {};
+      NET.onMsg = function(topic, payload){ if(topic.indexOf(MQT+'dir/')===0 && payload) seen[topic.slice((MQT+'dir/').length)] = payload; };
+      NET.sub([MQT+'dir/+']);
+      netTip('正在加入房间…');
+      setTimeout(function(){
+        var list = Object.keys(seen).filter(function(k){
+        if(k.indexOf('JQ')!==0) return false;
+        var o=null; try{ o=JSON.parse(seen[k]); }catch(e){ return true; }
+        if(o && o.full) return false;
+        return !(o && o.ts && Date.now()-o.ts > ROOM_TTL);
+      }).sort();
+        if(list.length){ netEnterGame(list[0], 'guest'); return; }
+        if(round < 3){ scan(); return; }
+        netToast('未找到任何房间');
+        log('I','加入房间失败：扫描三轮无结果');
+      }, 1500);
+    }
+    scan();
+  });
+}
+/* --- 进入联机对局页：订阅信令主题 → 建 PC → 房主发 offer --- */
+function netEnterGame(room, role){
+  ON.on=true; ON.room=room; ON.role=role; ON.myReady=false; ON.peerReady=false; ON.started=false; ON.oppCid=null;
+  G.mode='pvp'; G.netColor = (role==='host') ? 'red' : 'black';
+  G.humanColor = G.netColor; G.aiColor = Rules.other(G.netColor);
+  G.flip = (G.netColor==='black');
+  G.state = Rules.newGame(); G.sel=null; G.moves=[]; G.thinking=false; G.history=[];
+  G.viewState = Rules.viewFor(G.state, G.netColor);
+  G.phase = 'wait'; G.oppGone = false; G.cdTimer = null;
+  log('I','进入联机房间', { room:room, role:role, color:G.netColor });
+  renderGame(); Board.resize(); Board.draw(); updateStatus();
+  var sigTopics = [ rmSig(room,'join'), rmSig(room,'offer'), rmSig(room,'answer'), rmSig(room,'ice'), rmSig(room,'leave') ];
+  NET.sub(sigTopics);
+  var peerSeen = false;
+  NET.onMsg = function(topic, payload){
+    var d = null; try{ d = JSON.parse(payload); }catch(e){ return; }
+    if(!d) return;
+    if(ON.testMode && BOT.on && d.from === NET.cid){ botOnMsg(topic, d); return; }
+    if(d.from === NET.cid) return;                 /* 忽略自己发的回声 */
+    if(topic === rmSig(room,'leave')){ ON.peerReady=false; G.oppGone=true; netTip('对手已离场', true); updateStatus(); if(role==='host'){ peerSeen=false; ON.oppCid=null; NET.pub(rmDir(room), roomStamp(room), true); } return; }
+    if(topic === rmSig(room,'join')){
+      if(role!=='host' || peerSeen) return;
+      peerSeen = true; ON.oppCid = d.from; netTip('对手已进房，正在握手…'); NET.pub(rmDir(room), roomStamp(room), true);
+      RTC.init('host', function(c){ NET.pub(rmSig(room,'ice'), JSON.stringify({from:NET.cid, cand:c}), false); });
+      RTC.onOpen = function(){ netOnReady(); };
+      RTC.onData = function(s){ netOnData(s); };
+      RTC.onState = function(st){ if(st==='failed'){ netTip('直连失败：双方网络无法直连', true); } };
+      RTC.offer().then(function(o){ NET.pub(rmSig(room,'offer'), JSON.stringify({from:NET.cid, sdp:o}), false); });
+      return;
+    }
+    if(topic === rmSig(room,'offer')){
+      if(role!=='guest') return;
+      ON.oppCid = d.from; netTip('收到房主握手，正在回应…');
+      if(!RTC.pc){
+        RTC.init('guest', function(c){ NET.pub(rmSig(room,'ice'), JSON.stringify({from:NET.cid, cand:c}), false); });
+        RTC.onOpen = function(){ netOnReady(); };
+        RTC.onData = function(s){ netOnData(s); };
+        RTC.onState = function(st){ if(st==='failed'){ netTip('直连失败：双方网络无法直连', true); } };
+      }
+      RTC.answer(d.sdp).then(function(a){ NET.pub(rmSig(room,'answer'), JSON.stringify({from:NET.cid, sdp:a}), false); });
+      return;
+    }
+    if(topic === rmSig(room,'answer')){
+      if(role!=='host' || !RTC.pc) return;
+      if(ON.oppCid && d.from !== ON.oppCid) return;      /* 上一个对手遗留的 answer 直接丢掉 */
+      try{ var q=RTC.pc.setRemoteDescription(d.sdp); if(q && q.catch) q.catch(function(){}); }catch(e){}
+      return;
+    }
+    if(topic === rmSig(room,'ice')){
+      if(!RTC.pc || !RTC.pc.remoteDescription) return;
+      if(ON.oppCid && d.from !== ON.oppCid) return;
+      RTC.addIce(d.cand);
+      return;
+    }
+  };
+  if(role === 'host'){
+    ON.beaconT = setInterval(function(){ NET.pub(rmDir(room), roomStamp(room), true); }, ROOM_BEACON);
+  }
+  if(role === 'guest'){
+    netTip('正在加入 ' + room + '…');
+    NET.pub(rmSig(room,'join'), JSON.stringify({from:NET.cid}), false);
+    /* 客机也发自己的 ICE（房主可能后到 ICE，双向都灌） */
+    RTC.init('guest', function(c){ NET.pub(rmSig(room,'ice'), JSON.stringify({from:NET.cid, cand:c}), false); });
+    RTC.onOpen = function(){ netOnReady(); };
+    RTC.onData = function(s){ netOnData(s); };
+    RTC.onState = function(st){ if(st==='failed'){ netTip('直连失败：双方网络无法直连', true); } };
+  }else{
+    netTip('等待对手加入 ' + room + '…');
+  }
+}
+/* 揭棋的暗子是随机分配的：两边各自 newGame 会得到不同布局，必须房主发一份过去。
+   编码：每格 2 字符，首字符 r/b 表红黑，次字符用 ROLE 字母，小写=暗子、大写=明子，-- 为空。 */
+var NRC = { chariot:'R', advisor:'A', cannon:'C', soldier:'P', horse:'N', elephant:'B', general:'K' };
+var NRR = { R:'chariot', A:'advisor', C:'cannon', P:'soldier', N:'horse', B:'elephant', K:'general' };
+function boardDump(st){ var s=''; for(var i=0;i<90;i++){ var p=st.board[i];
+  if(!p){ s+='--'; continue; }
+  var ch = NRC[p.role] || '?';
+  s += (p.color==='red'?'r':'b') + (p.faceDown ? ch.toLowerCase() : ch); }
+  return s; }
+function boardLoad(s){ var b=new Array(90);
+  for(var i=0;i<90;i++){ var t=s.substr(i*2,2);
+    if(!t || t==='--'){ b[i]=null; continue; }
+    var up=t.charAt(1).toUpperCase(), role=NRR[up];
+    b[i] = role ? { color:(t.charAt(0)==='r'?'red':'black'), role:role, faceDown:(t.charAt(1)!==up) } : null; }
+  return { board:b, turn:'red', captures:[], noCap:0, ply:0, over:null, lastMove:null }; }
+function netOnReady(){
+  if(ON.role==='host' && G.state){ netSend({ t:'init', bd:boardDump(G.state) }); log('I','已发送初始布局', { room:ON.room }); }
+  netTip('已与对手直连，请点「准备」');
+  updateStatus();
+}
+function netSend(o){ if(RTC.send(o)) return true; toast('尚未与对手建立连接'); return false; }
+/* 目录条：房主每 15 秒续一次；已有人加入则带 full=1，第三人据此判断进不去 */
+function roomStamp(room){ return JSON.stringify({ room:room, owner:NET.cid, ts:Date.now(), full:(ON.oppCid?1:0) }); }
+/* --- 准备 / 取消准备 --- */
+function netToggleReady(){
+  if(!ON.on) return;
+  ON.myReady = !ON.myReady;
+  var b = document.querySelector('.readybtn');
+  if(b){ b.textContent = ON.myReady ? '已就绪' : '准备'; b.className = 'btn pri readybtn' + (ON.myReady?' on':''); }
+  netSend({ t:'ready', v:ON.myReady });
+  Hap.tap(); Snd.tap();
+  netCheckStart();
+}
+function netCheckStart(){
+  if(ON.myReady && ON.peerReady && !ON.started){
+    ON.started = true; G.phase = 'playing';
+    var b = document.querySelector('.readybtn'); if(b) b.style.display='none';
+    netTip(''); updateStatus(); Board.draw();
+    toast('对局开始'); log('I','联机对局开始', { room:ON.room });
+    if(ON.testMode && BOT.on && G.state && G.state.turn === BOT.color) setTimeout(botThink, 600);
+  }
+}
+/* --- 收到对手消息 --- */
+function netOnData(s){
+  var d = null; try{ d = JSON.parse(s); }catch(e){ return; }
+  if(!d) return;
+  if(d.t === 'init'){
+    if(ON.role==='host' || !d.bd) return;
+    G.state = boardLoad(d.bd); G.sel=null; G.moves=[]; G.history=[];
+    G.viewState = Rules.viewFor(G.state, G.netColor);
+    Board.draw(); updateStatus(); log('I','已接收初始布局', { room:ON.room }); return;
+  }
+  if(d.t === 'ready'){ ON.peerReady = !!d.v; updateStatus(); netCheckStart(); return; }
+  if(d.t === 'move'){ netApplyOppMove(d.from, d.to); return; }
+  if(d.t === 'undo'){ toast('对手申请悔棋'); return; }
+  if(d.t === 'resign'){ G.state.over = { result:'resign', winner:G.netColor }; updateStatus(); Board.draw(); toast('对手认输'); return; }
+  if(d.t === 'swap'){ toast('对手申请执黑'); return; }
+}
+function netApplyOppMove(from, to){
+  if(!G.state || !ON.started) return;
+  var res = null;
+  try{ res = Rules.applyMove(G.state, from, to); }catch(e){ log('E','应用对手走子失败',{msg:e.message}); return; }
+  if(!res || !res.state) return;
+  G.history.push(Rules.clone(G.state));
+  G.state = res.state;                       /* applyMove 是纯函数，返回新 state，必须回写 */
+  if(res.evt) feedbackMove(res.evt);
+  G.sel=null; G.moves=[]; G.viewState = Rules.viewFor(G.state, G.netColor);
+  Board.draw(); updateStatus();
+  if(isGameOver()) return;
+}
+/* --- 踢出机器人：断它的 P2P、撕掉它的状态，但它仍是房间里真实的另一端 --- */
+function netKickBot(){
+  if(!BOT.on){ toast('房间里没有机器人'); return; }
+  netSend({ t:'kick' });
+  try{ if(BOT.dc) BOT.dc.close(); }catch(e){}
+  try{ if(BOT.pc) BOT.pc.close(); }catch(e){}
+  BOT.on=false; BOT.pc=null; BOT.dc=null; BOT.ready=false;
+  ON.peerReady=false; ON.started=false; G.phase='wait';
+  netTip('机器人已被踢出'); updateStatus(); Board.draw();
+  log('I','踢出机器人', { room:ON.room });
+}
+/* --- 离开房间：撕掉 retained 条、关连接 --- */
+function netLeave(){
+  if(ON.on && ON.room){ NET.pub(rmDir(ON.room), '', true); NET.pub(rmSig(ON.room,'leave'), JSON.stringify({from:NET.cid}), false); }
+  clearInterval(ON.beaconT); ON.beaconT=0;
+  RTC.close();
+  if(BOT.pc){ try{ BOT.pc.close(); }catch(e){} }
+  if(ON.room){ NET.pub(rmDir(ON.room), '', true); }
+  botReset(); ON.testMode=false; netReset(); netTip('');
+}
+/* --- 测试模式：巅峰棋圣机器人。它走「真实服务器 + 真实 P2P」，用来验联机链路通不通。
+       同一页面开第二个 RTCPeerConnection（独立 cid），网络路径与两台手机完全一致；
+       唯一验不到的是跨网 NAT 穿透，那得两台真机。 --- */
+var BOT = { on:false, cid:null, room:null, role:null, ready:false, started:false, pc:null, dc:null, color:'black' };
+function botReset(){ BOT.on=false; BOT.cid=null; BOT.room=null; BOT.role=null; BOT.ready=false; BOT.started=false; BOT.pc=null; BOT.dc=null; }
+function botSend(o){ if(BOT.dc && BOT.dc.readyState==='open'){ try{ BOT.dc.send(JSON.stringify(o)); return true; }catch(e){} } return false; }
+function botPc(room, role){
+  var pc = new RTCPeerConnection(ICE_CFG);
+  BOT.pc = pc;
+  pc.onicecandidate = function(e){ if(e.candidate) NET.pub(rmSig(room,'ice'), JSON.stringify({from:BOT.cid, cand:e.candidate.toJSON?e.candidate.toJSON():e.candidate}), false); };
+  function bind(dc){ BOT.dc=dc;
+    dc.onopen = function(){
+      botSend({ t:'ready', v:true }); BOT.ready=true; netCheckStart();
+      log('I','机器人已直连', { room:room, role:BOT.role });
+    };
+    dc.onmessage = function(e){ botOnData(e.data); };
+  }
+  if(role==='host'){ bind(pc.createDataChannel('jieqi',{ordered:true})); } else { pc.ondatachannel=function(e){ bind(e.channel); }; }
+  return pc;
+}
+/* 机器人作为客机加入我的房间：完全复刻真人客机的动作（发 join → 收 offer → 回 answer → 灌 ICE） */
+function botJoin(room){
+  BOT.on=true; BOT.cid = rndId(10); BOT.room=room; BOT.role='guest';
+  BOT.color = 'black';
+  botPc(room,'guest');
+  NET.pub(rmSig(room,'join'), JSON.stringify({from:BOT.cid}), false);
+  netTip('机器人正在加入 ' + room + '…');
+}
+/* 机器人作为房主开房：贴 retained 条，等我的 join */
+function botHost(room){
+  BOT.on=true; BOT.cid = rndId(10); BOT.room=room; BOT.role='host';
+  BOT.color = 'red';
+  NET.pub(rmDir(room), JSON.stringify({room:room, owner:BOT.cid, bot:true, ts:Date.now()}), true);
+  clearInterval(ON.beaconT);
+  ON.beaconT = setInterval(function(){ NET.pub(rmDir(room), JSON.stringify({room:room, owner:BOT.cid, bot:true, ts:Date.now()}), true); }, ROOM_BEACON);
+  netTip('机器人已创建 ' + room + '，正在加入…');
+}
+function botOnMsg(topic, d){
+  var room = BOT.room; if(!room) return;
+  if(d.from === BOT.cid) return;                       /* 自己发的回声 */
+  if(topic === rmSig(room,'join') && BOT.role==='host'){
+    botPc(room,'host');
+    botPcOffer(room);
+    return;
+  }
+  if(topic === rmSig(room,'offer') && BOT.role==='guest'){
+    if(!BOT.pc) botPc(room,'guest');
+    var pc=BOT.pc;
+    pc.setRemoteDescription(d.sdp).then(function(){ return pc.createAnswer(); }).then(function(a){
+      return pc.setLocalDescription(a).then(function(){ NET.pub(rmSig(room,'answer'), JSON.stringify({from:BOT.cid, sdp:pc.localDescription}), false); });
+    }).catch(function(e){ log('E','机器人 answer 失败',{msg:String(e)}); });
+    return;
+  }
+  if(topic === rmSig(room,'answer') && BOT.role==='host' && BOT.pc){
+    try{ BOT.pc.setRemoteDescription(d.sdp); }catch(e){}
+    return;
+  }
+  if(topic === rmSig(room,'ice') && BOT.pc && BOT.pc.remoteDescription){
+    try{ var p=BOT.pc.addIceCandidate(d.cand); if(p && p.catch) p.catch(function(){}); }catch(e){}
+    return;
+  }
+}
+function botPcOffer(room){
+  var pc=BOT.pc;
+  pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){
+    NET.pub(rmSig(room,'offer'), JSON.stringify({from:BOT.cid, sdp:pc.localDescription}), false);
+  }); }).catch(function(e){ log('E','机器人 offer 失败',{msg:String(e)}); });
+}
+/* 机器人收到我的消息：准备同步 + 走子 */
+function botOnData(s){
+  var d=null; try{ d=JSON.parse(s); }catch(e){ return; }
+  if(!d) return;
+  if(d.t==='kick'){ try{ if(BOT.dc) BOT.dc.close(); }catch(e){} try{ if(BOT.pc) BOT.pc.close(); }catch(e){} BOT.on=false; BOT.pc=null; BOT.dc=null; return; }
+  if(d.t==='ready'){ if(d.v && BOT.ready && BOT.pc){ botSend({t:'ready', v:true}); } return; }
+  if(d.t==='move'){ botApplyMove(d.from, d.to); return; }
+}
+function botApplyMove(from, to){
+  if(!G.state) return;
+  var res=null; try{ res = Rules.applyMove(G.state, from, to); }catch(e){ return; }
+  if(!res || !res.state) return;
+  G.state = res.state;
+  if(res.evt) feedbackMove(res.evt);
+  G.sel=null; G.moves=[]; G.viewState = Rules.viewFor(G.state, G.netColor);
+  Board.draw(); updateStatus();
+  if(isGameOver()) return;
+  botThink();
+}
+/* 机器人思考：独占引擎（联机测试里「我」不用引擎），固定巅峰棋圣 */
+async function botThink(){
+  if(!BOT.on || !G.state) return;
+  if(G.state.turn !== BOT.color) return;
+  if(isOver(G.state.over)) return;
+  try{ await ENGINE.preload(function(){}); }catch(e){ netTip('机器人引擎未就绪：'+e.message, true); return; }
+  try{
+    var lv = LEVELS['peak'];
+    await ENGINE.setHash(Math.max(HASH_OF('peak'), ENGINE.suggestedHash()));
+    var fen = Rules.toFen(G.state, BOT.color);
+    var r = await ENGINE.search(fen, { movetime: lv.movetime });
+    var mv = pickEngineMove(G.state, BOT.color, r && r.best);
+    if(!mv) return;
+    var res = Rules.applyMove(G.state, mv.from, mv.to);
+    if(!res || !res.state) return;
+    G.state = res.state;
+    if(res.evt) feedbackMove(res.evt);
+    G.sel=null; G.moves=[]; G.viewState = Rules.viewFor(G.state, G.netColor);
+    Board.draw(); updateStatus();
+    botSend({ t:'move', from:mv.from, to:mv.to });
+    if(isGameOver()) return;
+  }catch(e){ log('E','机器人思考异常',{msg:String(e && e.message)}); }
+}
+/* --- 联机测试入口：与正常联机同一套页面，只是开房/加入后由机器人接手另一端 --- */
+function renderNetTest(){
+  clearApp(); netBar('联机测试（机器人）', function(){ botReset(); ON.testMode=false; renderNetSetup(); });
+  var page = el('div','page'); page.style.justifyContent='flex-start';
+  var c1 = el('div','card'); c1.appendChild(el('h3','','联机测试'));
+  var row = el('div','row2');
+  var bc = el('button','btn pri','创建房间'); bc.onclick=function(){ Snd.tap(); Hap.tap(); netTestCreate(); };
+  var bj = el('button','btn pri','加入房间'); bj.onclick=function(){ Snd.tap(); Hap.tap(); netTestJoin(); };
+  row.appendChild(bc); row.appendChild(bj); c1.appendChild(row);
+  var ht = el('div','',''); ht.id='net-tip'; ht.className='hint'; ht.style.cssText='display:none;text-align:center;font-weight:700';
+  c1.appendChild(ht);
+  page.appendChild(c1); app.appendChild(page);
+}
+function netTestCreate(){
+  ON.testMode = true;
+  netEnsure(function(ok){ if(!ok) return;
+    netDoCreate(null);
+    var w = setInterval(function(){
+      if(ON.on && ON.room){ clearInterval(w); setTimeout(function(){ botJoin(ON.room); }, 3000); }
+    }, 200);
+    setTimeout(function(){ clearInterval(w); }, 20000);
+  });
+}
+function netTestJoin(){
+  ON.testMode = true;
+  netEnsure(function(ok){ if(!ok) return;
+    var rm = null, seen = {};
+    NET.onMsg = function(topic, payload){ if(topic.indexOf(MQT+'dir/')===0 && payload) seen[topic.slice((MQT+'dir/').length)]=payload; };
+    NET.sub([MQT+'dir/+']);
+    netTip('正在为机器人挑空房…');
+    setTimeout(function(){
+      for(var i=1;i<=100;i++){ if(!seen[roomName(i)]){ rm = roomName(i); break; } }
+      if(!rm){ netToast('房间已满，没有空房'); return; }
+      botHost(rm);
+      netTip('机器人已开 ' + rm + '，3 秒后自动加入…');
+      setTimeout(function(){ netDoJoin(rm); }, 3000);
+    }, 1200);
+  });
+}
+
+
+
+/* ---------------- 胶水层：把 jieqi 的模块接到本页 ---------------- */
+function showMenu(){
+  try{ document.body.classList.remove('playing'); }catch(e){}
+  app.className=''; clearApp();
+  try{ document.getElementById('stage').classList.remove('gaming'); }catch(e){}
+  try{ if(UI && UI.layout) UI.layout(); }catch(e){}
+}
+function renderHome(){ showMenu(); }
+function openDrawer(){ UI.openPanel(); }
+/* jieqi 的 log(code, msg, obj) → 转发到本页的诊断日志（同一个环形缓冲，日志里看得到） */
+function log(code, msg, obj){
+  try{
+    var t = msg + (obj ? ' ' + JSON.stringify(obj) : '');
+    LOG.add(code || 'I', t);
+  }catch(e){}
+}
+function randInt(n){
+  if(window.crypto && crypto.getRandomValues){ var a=new Uint32Array(1); crypto.getRandomValues(a); return a[0]%n; }
+  return Math.floor(Math.random()*n);
+}
+function shuffle(arr){
+  for(var i=arr.length-1;i>0;i--){ var j=randInt(i+1); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; }
+  return arr;
+}
+function netBar(title, backFn){
+  var bar = el('div','netbar');
+  var bk = el('button','bk','‹');
+  bk.setAttribute('aria-label','返回');
+  bk.onclick = function(){ Snd.tap(); Hap.tap(); backFn ? backFn() : showMenu(); };
+  bar.appendChild(bk);
+  bar.appendChild(el('div','tt', title));
+  bar.appendChild(el('div','ph'));
+  app.appendChild(bar);
+  return bar;
+}
+/* ==================== 游戏模块：照抄 jieqi.html ==================== */
+var SAFE_HTML_RE = /^[^<>]*(?:<\/?(?:br|b|i|u|em|strong|span|small|div)[^>]*>[^<>]*)+$/i;
+function el(tag, cls, txt){
+  var e=document.createElement(tag);
+  if(cls) e.className=cls;
+  if(txt!=null){
+    if(typeof txt === 'string' && txt.indexOf('<') >= 0 && SAFE_HTML_RE.test(txt)) e.innerHTML = txt;
+    else e.textContent = txt;
+  }
+  return e;
+}
+var app = document.getElementById('app');
+function clearApp(){ app.innerHTML=''; }
+
+
+function modalBox(msg, btns){
+  var mask=el('div','mask');
+  var m=el('div','modal');
+  m.appendChild(el('h3','',msg));
+  var row=el('div','row');
+  (btns||[]).forEach(function(b){
+    var btn=el('button','btn'+(b.pri?' pri':''), b.txt);
+    btn.onclick=function(){ mask.remove(); b.fn && b.fn(); };
+    row.appendChild(btn);
+  });
+  m.appendChild(row); mask.appendChild(m);
+  document.body.appendChild(mask);
+  return mask;
+}
+
+function confirmBox(msg, fn){
+  return modalBox(msg, [
+    { txt:'取消' },
+    { txt:'确定', pri:true, fn:fn }
+  ]);
+}
+
+function askBox(msg, yesTxt, onYes, noTxt, onNo){
+  return modalBox(msg, [
+    { txt: noTxt||'取消', fn: onNo },
+    { txt: yesTxt||'确定', pri:true, fn: onYes }
+  ]);
+}
+function infoBox(msg){
+  return modalBox(msg, [ { txt:'知道了', pri:true } ]);
+}
+
+var Snd = {
+  ctx:null, master:null, noiseBuf:null,
+  unlock: function(){
+    try{
+      if(!this.ctx){
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if(!AC) return;
+        this.ctx = new AC();
+        this.master = this.ctx.createGain();
+        this.master.gain.value = (ST.volume/100) * 0.9;
+        this.master.connect(this.ctx.destination);
+      }
+      if(this.ctx.state === 'suspended') this.ctx.resume();
+    }catch(e){ log('W','音频初始化失败',{msg:e.message}); }
+  },
+  setVolume: function(){ try{ if(this.master) this.master.gain.value = (ST.volume/100)*0.9; }catch(e){} },
+  tone: function(o){
+    if(!ST.sound || !this.ctx) return;
+    try{
+      var t0 = this.ctx.currentTime + (o.delay||0);
+      var osc = this.ctx.createOscillator(), g = this.ctx.createGain();
+      osc.type = o.type || 'sine';
+      osc.frequency.setValueAtTime(o.f, t0);
+      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20,o.f2), t0+o.dur);
+      var peak = (o.gain==null ? 0.25 : o.gain);
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(peak, t0+Math.min(0.02, o.dur*0.25));
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
+      var node = osc;
+      if(o.lp){ var f=this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=o.lp; node.connect(f); node=f; }
+      node.connect(g); g.connect(this.master);
+      osc.start(t0); osc.stop(t0+o.dur+0.05);
+    }catch(e){}
+  },
+  noise: function(o){
+    if(!ST.sound || !this.ctx) return;
+    try{
+      var t0 = this.ctx.currentTime + (o.delay||0);
+      var len = Math.max(1, Math.floor(this.ctx.sampleRate * o.dur));
+      if(!this.noiseBuf || this.noiseBuf.length < len){
+        this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
+        var dd = this.noiseBuf.getChannelData(0);
+        for(var i=0;i<len;i++) dd[i] = Math.random()*2-1;
+      }
+      var src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
+      var f = this.ctx.createBiquadFilter(); f.type = o.hp ? 'highpass' : 'lowpass';
+      f.frequency.value = o.freq || 1000;
+      var g = this.ctx.createGain();
+      g.gain.setValueAtTime(o.gain==null?0.3:o.gain, t0);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
+      src.connect(f); f.connect(g); g.connect(this.master);
+      src.start(t0); src.stop(t0+o.dur+0.02);
+    }catch(e){}
+  },
+  
+  tap:    function(){ this.unlock(); this.tone({f:1180,f2:900,dur:0.05,type:'sine',gain:0.12}); },
+  move:   function(){ this.unlock(); this.noise({dur:0.055,freq:1800,hp:true,gain:0.34}); this.tone({f:220,f2:110,dur:0.1,type:'sine',gain:0.30}); },
+  reveal: function(){ this.unlock();
+            this.noise({dur:0.07,freq:3000,hp:true,gain:0.20});
+            this.tone({f:1046,dur:0.20,type:'triangle',gain:0.24});
+            this.tone({f:1568,dur:0.26,type:'sine',gain:0.16,delay:0.05}); },
+  capture:function(){ this.unlock();
+            this.noise({dur:0.09,freq:900,gain:0.30});
+            this.tone({f:180,f2:90,dur:0.16,type:'sawtooth',gain:0.20,lp:1200}); },
+  check:  function(){ this.unlock();
+            this.tone({f:880,dur:0.10,type:'square',gain:0.16});
+            this.tone({f:1174,dur:0.14,type:'square',gain:0.14,delay:0.11}); },
+  undo:   function(){ this.unlock(); this.tone({f:700,f2:380,dur:0.12,type:'triangle',gain:0.16}); },
+  connect:function(){ this.unlock();
+            this.tone({f:523,dur:0.10,type:'triangle',gain:0.20});
+            this.tone({f:784,dur:0.14,type:'triangle',gain:0.20,delay:0.11}); },
+  win:    function(){ this.unlock();
+            [523,659,784,1046].forEach(function(f,i){ Snd.tone({f:f,dur:0.22,type:'triangle',gain:0.22,delay:i*0.13}); }); },
+  lose:   function(){ this.unlock();
+            this.tone({f:392,dur:0.26,type:'sawtooth',gain:0.18,lp:900});
+            this.tone({f:294,dur:0.34,type:'sawtooth',gain:0.16,delay:0.20,lp:800}); },
+  draw:   function(){ this.unlock(); this.tone({f:440,dur:0.20,type:'square',gain:0.14}); }
+};
+
+var Hap = {
+  ok: (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'),
+  fire: function(pattern){
+    if(!ST.vibrate || !this.ok) return;
+    var iv = ST.vibIntensity;
+    if(!iv || iv <= 0) return;                 
+    try{
+      
+      var out = pattern.map(function(d){ return Math.min(100, Math.round(d * iv)); })
+                       .filter(function(d){ return d > 0; });
+      if(!out.length) return;
+      navigator.vibrate(out);
+    }catch(e){}
+  },
+  
+  tap:      function(){ this.fire([1]); },
+  move:     function(){ this.fire([1]); },
+  reveal:   function(){ this.fire([1]); },
+  capture:  function(){ this.fire([1]); },
+  check:    function(){ this.fire([1,.6,1]); },
+  undo:     function(){ this.fire([1]); },
+  connect:  function(){ this.fire([1,.6,1]); },
+  win:      function(){ this.fire([1,.6,1,.6,1]); },
+  lose:     function(){ this.fire([1,.6,1]); }
+};
+
+var LEVELS = {
+  easy:      { name:'简单',     depth:1,  desc:'搜索 1 层',                  hash:16  },
+  normal:    { name:'普通',     movetime:300, desc:'限时 0.3 秒',            hash:32  },
+  hard:      { name:'困难',     movetime:1000, desc:'限时 1 秒',             hash:64  },
+  nightmare: { name:'噩梦',     movetime:4000, desc:'限时 4 秒',             hash:96  },
+  peak:      { name:'巅峰棋圣', movetime:5000, desc:'限时 5 秒 + 后台思考',  hash:128, ponder:true }
+};
+function HASH_OF(lv){ return (LEVELS[lv] && LEVELS[lv].hash) || 32; }
+var G = {
+  mode:null, level:'normal', humanColor:'red', flip:false,
+  state:null, sel:null, moves:[], thinking:false, history:[], viewState:null,
+  loading:null, aiColor:'black', ponder:null
+};
+
+
+var Rules = (function(){
+  var ROLE_CH = { chariot:'R', advisor:'A', cannon:'C', soldier:'P', horse:'N', elephant:'B', general:'K' };
+  var CH_ROLE = { R:'chariot', A:'advisor', C:'cannon', P:'soldier', N:'horse', B:'elephant', K:'general' };
+  var POOL_ORDER = ['chariot','advisor','cannon','soldier','horse','elephant']; 
+  var ROLE_CN = {
+    chariot:{red:'車',black:'車'}, horse:{red:'馬',black:'馬'}, elephant:{red:'相',black:'象'},
+    advisor:{red:'仕',black:'士'}, general:{red:'帥',black:'將'}, cannon:{red:'炮',black:'砲'}, soldier:{red:'兵',black:'卒'}
+  };
+
+  
+  var HOME = new Array(90).fill(null);
+  (function(){
+    var back = ['chariot','horse','elephant','advisor','general','advisor','elephant','horse','chariot'];
+    for(var c=0;c<9;c++){ HOME[c] = back[c]; HOME[81+c] = back[c]; }
+    HOME[2*9+1]='cannon'; HOME[2*9+7]='cannon';
+    HOME[7*9+1]='cannon'; HOME[7*9+7]='cannon';
+    [0,2,4,6,8].forEach(function(c){ HOME[3*9+c]='soldier'; HOME[6*9+c]='soldier'; });
+  })();
+
+  var RED_SLOTS  = [0,1,2,3,5,6,7,8, 19,25, 27,29,31,33,35];
+  var BLACK_SLOTS= [81,82,83,84,86,87,88,89, 64,70, 54,56,58,60,62];
+  var RED_START  = ['chariot','chariot','horse','horse','elephant','elephant','advisor','advisor','cannon','cannon','soldier','soldier','soldier','soldier','soldier'];
+  var BLACK_START= RED_START.slice();
+
+  function newGame(){
+    var b = new Array(90).fill(null);
+    var rs = shuffle(RED_START.slice()), bs = shuffle(BLACK_START.slice());
+    for(var i=0;i<15;i++){
+      b[RED_SLOTS[i]]   = { color:'red',   role: rs[i], faceDown:true };
+      b[BLACK_SLOTS[i]] = { color:'black', role: bs[i], faceDown:true };
+    }
+    b[4]  = { color:'red',   role:'general', faceDown:false };
+    b[85] = { color:'black', role:'general', faceDown:false };
+    return { board:b, turn:'red', captures:[], noCap:0, ply:0, over:null, lastMove:null };
+  }
+  function clone(s){
+    var b=new Array(90);
+    for(var i=0;i<90;i++) b[i] = s.board[i] ? { color:s.board[i].color, role:s.board[i].role, faceDown:s.board[i].faceDown } : null;
+    return { board:b, turn:s.turn, captures:s.captures.map(function(c){return {owner:c.owner,role:c.role,wasFaceDown:c.wasFaceDown};}),
+             noCap:s.noCap, ply:s.ply, over:s.over, lastMove:s.lastMove };
+  }
+  function effRole(p, idx){ return p.faceDown ? HOME[idx] : p.role; }
+  function inPalace(r,c,color){ if(c<3||c>5) return false; return color==='red' ? (r>=0&&r<=2) : (r>=7&&r<=9); }
+  function other(c){ return c==='red' ? 'black' : 'red'; }
+
+  function genRaw(s, from, out){
+    var p = s.board[from]; if(!p) return out;
+    var r0=(from/9)|0, c0=from%9;
+    var role = effRole(p, from);
+    var red = p.color==='red';
+    var B = s.board;
+    function push(r,c){
+      if(r<0||r>9||c<0||c>8) return;
+      var j=r*9+c, q=B[j];
+      if(q && q.color===p.color) return;
+      out.push(j);
+    }
+    function walk(dirs, cannon){
+      for(var k=0;k<dirs.length;k++){
+        var dr=dirs[k][0], dc=dirs[k][1];
+        var r=r0+dr, c=c0+dc, screen=false;
+        while(r>=0&&r<=9&&c>=0&&c<=8){
+          var j=r*9+c, q=B[j];
+          if(cannon){
+            if(!screen){
+              if(!q){ out.push(j); }
+              else { screen=true; }
+            } else {
+              if(q){ if(q.color!==p.color) out.push(j); break; }
+            }
+          } else {
+            if(!q){ out.push(j); }
+            else { if(q.color!==p.color) out.push(j); break; }
+          }
+          r+=dr; c+=dc;
+        }
+      }
+    }
+    var D4=[[1,0],[-1,0],[0,1],[0,-1]];
+    if(role==='chariot'){ walk(D4,false); }
+    else if(role==='cannon'){ walk(D4,true); }
+    else if(role==='general'){
+      
+      var cand=[[r0+1,c0],[r0-1,c0],[r0,c0+1],[r0,c0-1]];
+      for(var i=0;i<cand.length;i++){
+        var r=cand[i][0],c=cand[i][1];
+        if(!inPalace(r,c,p.color)) continue;
+        var j=r*9+c, q=B[j];
+        if(q && q.color===p.color) continue;
+        out.push(j);
+      }
+    }
+    else if(role==='advisor'){
+      var av=[[r0+1,c0+1],[r0+1,c0-1],[r0-1,c0+1],[r0-1,c0-1]];
+      for(var i2=0;i2<av.length;i2++){
+        var r2=av[i2][0], c2=av[i2][1];
+        if(r2<0||r2>9||c2<0||c2>8) continue;
+        if(p.faceDown && !inPalace(r2,c2,p.color)) continue; 
+        var j2=r2*9+c2, q2=B[j2];
+        if(q2 && q2.color===p.color) continue;
+        out.push(j2);
+      }
+    }
+    else if(role==='elephant'){
+      var ev=[[r0+2,c0+2],[r0+2,c0-2],[r0-2,c0+2],[r0-2,c0-2]];
+      for(var i3=0;i3<ev.length;i3++){
+        var r3=ev[i3][0], c3=ev[i3][1];
+        if(r3<0||r3>9||c3<0||c3>8) continue;
+        if(B[((r0+r3)/2|0)*9 + ((c0+c3)/2|0)]) continue;      
+        if(p.faceDown && !(p.color==='red' ? r3<=4 : r3>=5)) continue; 
+        var j3=r3*9+c3, q3=B[j3];
+        if(q3 && q3.color===p.color) continue;
+        out.push(j3);
+      }
+    }
+    else if(role==='horse'){
+      var hv=[[r0+2,c0+1],[r0+2,c0-1],[r0-2,c0+1],[r0-2,c0-1],[r0+1,c0+2],[r0+1,c0-2],[r0-1,c0+2],[r0-1,c0-2]];
+      for(var i4=0;i4<hv.length;i4++){
+        var r4=hv[i4][0], c4=hv[i4][1];
+        if(r4<0||r4>9||c4<0||c4>8) continue;
+        var legR = (Math.abs(r4-r0)===2) ? r0 + (r4>r0?1:-1) : r0;
+        var legC = (Math.abs(r4-r0)===2) ? c0 : c0 + (c4>c0?1:-1);
+        if(B[legR*9+legC]) continue; 
+        var j4=r4*9+c4, q4=B[j4];
+        if(q4 && q4.color===p.color) continue;
+        out.push(j4);
+      }
+    }
+    else if(role==='soldier'){
+      var fwd = red ? r0+1 : r0-1;
+      push(fwd, c0);
+      var crossed = red ? (r0>=5) : (r0<=4);
+      if(crossed){ push(r0, c0+1); push(r0, c0-1); }
+    }
+    return out;
+  }
+
+  function findGeneral(s, color){
+    for(var i=0;i<90;i++){ var p=s.board[i]; if(p && p.color===color && p.role==='general') return i; }
+    return -1;
+  }
+  function kingsFace(s){
+    var kr=findGeneral(s,'red'), kb=findGeneral(s,'black');
+    if(kr<0||kb<0) return false;
+    var cr=kr%9, cb=kb%9;
+    if(cr!==cb) return false;
+    var r1=Math.min((kr/9|0),(kb/9|0))+1, r2=Math.max((kr/9|0),(kb/9|0));
+    for(var r=r1;r<r2;r++){ if(s.board[r*9+cr]) return false; }
+    return true;
+  }
+  function attacked(s, idx, byColor){
+    var r=(idx/9)|0, c=idx%9, B=s.board;
+    var dirs=[[1,0],[-1,0],[0,1],[0,-1]];
+    for(var k=0;k<4;k++){
+      var dr=dirs[k][0], dc=dirs[k][1];
+      var rr=r+dr, cc=c+dc, first=false, dist=1;
+      while(rr>=0&&rr<=9&&cc>=0&&cc<=8){
+        var j=rr*9+cc, q=B[j];
+        if(q){
+          if(!first){
+            first=true;
+            if(q.color===byColor){
+              var er=effRole(q,j);
+              if(er==='chariot') return true;
+              if(er==='general' && dist===1) return true;
+            }
+          } else {
+            if(q.color===byColor && effRole(q,j)==='cannon') return true;
+            break;
+          }
+        }
+        rr+=dr; cc+=dc; dist++;
+      }
+    }
+    
+    var hv=[[-2,-1],[-2,1],[-1,-2],[-1,2],[1,-2],[1,2],[2,-1],[2,1]];
+    for(var i=0;i<8;i++){
+      var mr=r+hv[i][0], mc=c+hv[i][1];
+      if(mr<0||mr>9||mc<0||mc>8) continue;
+      var mj=mr*9+mc, mq=B[mj];
+      if(!mq||mq.color!==byColor||effRole(mq,mj)!=='horse') continue;
+      var ddr=r-mr, ddc=c-mc;
+      var legR = Math.abs(ddr)===2 ? mr + (ddr>0?1:-1) : mr;
+      var legC = Math.abs(ddr)===2 ? mc : mc + (ddc>0?1:-1);
+      if(!B[legR*9+legC]) return true;
+    }
+    
+    if(byColor==='red'){
+      if(r-1>=0){ var j1=(r-1)*9+c, q1=B[j1]; if(q1&&q1.color==='red'&&effRole(q1,j1)==='soldier') return true; }
+      if(r>=5){ for(var d=-1;d<=1;d+=2){ var cc2=c+d; if(cc2<0||cc2>8) continue; var j2=r*9+cc2,q2=B[j2];
+        if(q2&&q2.color==='red'&&effRole(q2,j2)==='soldier') return true; } }
+    } else {
+      if(r+1<=9){ var j3=(r+1)*9+c, q3=B[j3]; if(q3&&q3.color==='black'&&effRole(q3,j3)==='soldier') return true; }
+      if(r<=4){ for(var d2=-1;d2<=1;d2+=2){ var cc3=c+d2; if(cc3<0||cc3>8) continue; var j4=r*9+cc3,q4=B[j4];
+        if(q4&&q4.color==='black'&&effRole(q4,j4)==='soldier') return true; } }
+    }
+    
+    var av=[[-1,-1],[-1,1],[1,-1],[1,1]];
+    for(var a=0;a<4;a++){
+      var ar=r+av[a][0], ac=c+av[a][1];
+      if(ar<0||ar>9||ac<0||ac>8) continue;
+      var aj=ar*9+ac, aq=B[aj];
+      if(!aq||aq.color!==byColor||effRole(aq,aj)!=='advisor') continue;
+      if(!aq.faceDown) return true;               
+      if(inPalace(r,c,aq.color)) return true;     
+    }
+    
+    var ev=[[-2,-2],[-2,2],[2,-2],[2,2]];
+    for(var b2=0;b2<4;b2++){
+      var er2=r+ev[b2][0], ec=c+ev[b2][1];
+      if(er2<0||er2>9||ec<0||ec>8) continue;
+      var ej=er2*9+ec, eq=B[ej];
+      if(!eq||eq.color!==byColor||effRole(eq,ej)!=='elephant') continue;
+      if(B[(r+ev[b2][0]/2|0)*9 + (c+ev[b2][1]/2|0)]) continue;   
+      if(!eq.faceDown) return true;               
+      if(eq.color==='red' ? r<=4 : r>=5) return true;
+    }
+    return false;
+  }
+  function inCheck(s, color){ var g=findGeneral(s,color); if(g<0) return false; return attacked(s,g,other(color)); }
+
+  function legalMoves(s, from){
+    var raw=[]; genRaw(s,from,raw);
+    var out=[], p=s.board[from]; if(!p) return out;
+    for(var i=0;i<raw.length;i++){
+      var to=raw[i];
+      var t=clone(s);
+      t.board[to]=t.board[from]; t.board[from]=null;
+      if(t.board[to]) t.board[to].faceDown=false;
+      if(kingsFace(t)) continue;
+      if(inCheck(t,p.color)) continue;
+      out.push(to);
+    }
+    return out;
+  }
+  function allLegal(s, color){
+    var res=[];
+    for(var i=0;i<90;i++){ var p=s.board[i]; if(p&&p.color===color){ var mv=legalMoves(s,i); for(var k=0;k<mv.length;k++) res.push({from:i,to:mv[k]}); } }
+    return res;
+  }
+
+  
+  function applyMove(s, from, to){
+    var n = clone(s);
+    var p = n.board[from], cap = n.board[to];
+    var wasFaceDown = p.faceDown;
+    n.board[to] = { color:p.color, role:p.role, faceDown:false };
+    n.board[from] = null;
+    var evt = { from:from, to:to, mover:p.color, revealed: wasFaceDown ? p.role : null, captured:null };
+    if(cap){
+      evt.captured = { owner:cap.color, role:cap.role, wasFaceDown:cap.faceDown };
+      n.captures.push(evt.captured);
+      n.noCap = 0;
+    } else if(wasFaceDown){
+      n.noCap = 0;                 
+    } else {
+      n.noCap = s.noCap + 1;
+    }
+    n.turn = other(p.color);
+    n.ply = s.ply + 1;
+    n.lastMove = { from:from, to:to };
+    
+    var opp = n.turn;
+    var moves = allLegal(n, opp);
+    var chk = inCheck(n, opp);
+    if(moves.length === 0){
+      
+      n.over = { result: chk ? 'checkmate' : 'stalemate', winner: p.color };
+    } else if(n.noCap >= 80){
+      n.over = { result:'draw80', winner:null };
+    } else if(n.ply >= 400){
+      n.over = { result:'drawMax', winner:null };   
+    } else {
+      n.over = { result: chk ? 'check' : null, winner:null };
+    }
+    return { state:n, evt:evt };
+  }
+
+  
+  function pieceFenCh(p){
+    if(p.faceDown) return p.color==='red' ? 'X' : 'x';
+    var ch = ROLE_CH[p.role];
+    return p.color==='red' ? ch : ch.toLowerCase();
+  }
+  function boardField(s){
+    var rows=[];
+    for(var r=9;r>=0;r--){
+      var row='', empty=0;
+      for(var c=0;c<9;c++){
+        var p=s.board[r*9+c];
+        if(!p){ empty++; continue; }
+        if(empty){ row+=empty; empty=0; }
+        row += pieceFenCh(p);
+      }
+      if(empty) row+=empty;
+      rows.push(row);
+    }
+    return rows.join('/');
+  }
+  
+  var POOL_INIT = { chariot:2, advisor:2, cannon:2, soldier:5, horse:2, elephant:2 };
+  
+  function poolField(s, viewer){
+    var known = { red:{}, black:{} };
+    for(var i=0;i<90;i++){
+      var p=s.board[i];
+      if(p && !p.faceDown && p.role && p.role!=='general'){
+        known[p.color][p.role] = (known[p.color][p.role]||0)+1;
+      }
+    }
+    for(var k=0;k<s.captures.length;k++){
+      var cp=s.captures[k];
+      if(!cp) continue;
+      if(!cp.wasFaceDown && cp.role && cp.role!=='general'){
+        known[cp.owner][cp.role] = (known[cp.owner][cp.role]||0)+1;
+      }
+    }
+    var out='';
+    ['red','black'].forEach(function(col){
+      POOL_ORDER.forEach(function(role){
+        var n = (POOL_INIT[role]||0) - (known[col][role]||0);
+        if(n<0) n=0;
+        out += (col==='red'?ROLE_CH[role]:ROLE_CH[role].toLowerCase()) + n;
+      });
+    });
+    return out;
+  }
+  function toFen(s, viewer){
+    return [ boardField(s), s.turn==='red'?'w':'b', poolField(s, viewer), s.noCap, Math.floor(s.ply/2)+1 ].join(' ');
+  }
+
+  
+  function idxToUci(i){ return String.fromCharCode(97+(i%9)) + ((i/9)|0); }
+  function uciToIdx(u){ return (parseInt(u.slice(1),10))*9 + (u.charCodeAt(0)-97); }
+
+  
+  function viewFor(s, viewer){
+    var b=new Array(90);
+    for(var i=0;i<90;i++){
+      var p=s.board[i];
+      if(!p){ b[i]=null; continue; }
+      if(p.faceDown){ b[i]={ color:p.color, role:null, faceDown:true }; }
+      else b[i]={ color:p.color, role:p.role, faceDown:false };
+    }
+    var caps = s.captures.map(function(cp){
+      
+      if(cp.owner===viewer && cp.wasFaceDown) return { owner:cp.owner, role:null, wasFaceDown:true };
+      return { owner:cp.owner, role:cp.role, wasFaceDown:cp.wasFaceDown };
+    });
+    return { board:b, turn:s.turn, captures:caps, noCap:s.noCap, ply:s.ply, over:s.over, lastMove:s.lastMove };
+  }
+
+  return { ROLE_CH:ROLE_CH, CH_ROLE:CH_ROLE, ROLE_CN:ROLE_CN, HOME:HOME,
+    newGame:newGame, clone:clone, effRole:effRole, inPalace:inPalace, other:other,
+    genRaw:genRaw, legalMoves:legalMoves, allLegal:allLegal, applyMove:applyMove,
+    inCheck:inCheck, kingsFace:kingsFace, attacked:attacked, findGeneral:findGeneral,
+    toFen:toFen, idxToUci:idxToUci, uciToIdx:uciToIdx, viewFor:viewFor };
+})();
+
+var Board = {
+  cv:null, ctx:null, cell:0, pad:0, W:0, H:0, pressIdx:-1, lastTap:0,
+  init(cv){ this.cv=cv; this.ctx=cv.getContext('2d'); },
+  resize(){
+    var wrap = this.cv.parentNode;
+    
+    var mg = (document.getElementById('app') && document.getElementById('app').classList.contains('immersive')) ? 3 : 12;
+    var aw = wrap.clientWidth - mg, ah = wrap.clientHeight - mg;
+    if(aw<=0||ah<=0) return;
+    var cell = Math.floor(Math.min(aw/9, ah/10));
+    if(cell<8) cell=8;
+    this.cell = cell; this.pad = Math.round(cell*0.52);
+    var W = cell*8 + this.pad*2, H = cell*9 + this.pad*2;
+    
+    if(H > ah){ var k = ah/H; cell = Math.floor(cell*k); this.cell=cell; this.pad=Math.round(cell*0.52); W=cell*8+this.pad*2; H=cell*9+this.pad*2; }
+    var dpr = window.devicePixelRatio||1;
+    this.W=W; this.H=H;
+    this.cv.style.width=W+'px'; this.cv.style.height=H+'px';
+    this.cv.width=Math.round(W*dpr); this.cv.height=Math.round(H*dpr);
+    this.ctx.setTransform(dpr,0,0,dpr,0,0);
+  },
+  xy(r,c){
+    var sr = G.flip ? r : (9-r);
+    var sc = G.flip ? (8-c) : c;
+    return [ this.pad + sc*this.cell, this.pad + sr*this.cell ];
+  },
+  pick(px,py){
+    var sc = Math.round((px - this.pad)/this.cell);
+    var sr = Math.round((py - this.pad)/this.cell);
+    if(sc<0||sc>8||sr<0||sr>9) return -1;
+    var c = G.flip ? (8-sc) : sc;
+    var r = G.flip ? sr : (9-sr);
+    return r*9+c;
+  },
+  draw(){
+    var ctx=this.ctx, cell=this.cell, pad=this.pad;
+    if(!ctx||!cell) return;
+    var W=this.W,H=this.H;
+    
+    var g=ctx.createLinearGradient(0,0,0,H);
+    g.addColorStop(0,'#e3c08d'); g.addColorStop(1,'#d4a86e');
+    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    ctx.strokeStyle='#8a5a2b'; ctx.lineWidth=Math.max(1,cell*0.035);
+    
+    ctx.beginPath();
+    for(var c=0;c<9;c++){
+      var a=this.xy(0,c), b=this.xy(9,c);
+      if(c===0||c===8){ ctx.moveTo(a[0],a[1]); ctx.lineTo(b[0],b[1]); }
+      else { ctx.moveTo(a[0],a[1]); ctx.lineTo(this.xy(4,c)[0],this.xy(4,c)[1]);
+             ctx.moveTo(this.xy(5,c)[0],this.xy(5,c)[1]); ctx.lineTo(b[0],b[1]); }
+    }
+    for(var r=0;r<10;r++){
+      var a2=this.xy(r,0), b2=this.xy(r,8);
+      ctx.moveTo(a2[0],a2[1]); ctx.lineTo(b2[0],b2[1]);
+    }
+    ctx.stroke();
+    
+    ctx.lineWidth=Math.max(1.2,cell*0.05);
+    ctx.strokeRect(this.xy(0,0)[0], this.xy(0,0)[1], cell*8, cell*9);
+    
+    ctx.lineWidth=Math.max(1,cell*0.03);
+    ctx.beginPath();
+    [[0,3,2,5],[0,5,2,3],[7,3,9,5],[7,5,9,3]].forEach(function(s){
+      var p1=this.xy(s[0],s[1]), p2=this.xy(s[2],s[3]);
+      ctx.moveTo(p1[0],p1[1]); ctx.lineTo(p2[0],p2[1]);
+    }, this);
+    ctx.stroke();
+    
+    ctx.fillStyle='rgba(120,72,30,.75)';
+    ctx.font='600 '+Math.round(cell*0.42)+'px "KaiTi","STKaiti","PingFang SC","Microsoft YaHei",serif';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    var midY=(this.xy(4,0)[1]+this.xy(5,0)[1])/2;
+    var x1=this.xy(4,1)[0], x2=this.xy(4,7)[0];
+    ctx.fillText('楚 河', x1, midY);
+    ctx.fillText('漢 界', x2, midY);
+    
+    ctx.fillStyle='#8a5a2b';
+    var marks=[[3,0],[3,2],[3,4],[3,6],[3,8],[6,0],[6,2],[6,4],[6,6],[6,8],[2,1],[2,7],[7,1],[7,7]];
+    ctx.lineWidth=Math.max(1,cell*0.022);
+    marks.forEach(function(m){
+      var p=this.xy(m[0],m[1]); var off=cell*0.10, L=cell*0.16;
+      for(var k=0;k<4;k++){
+        var sx=(k===0||k===3)?-1:1, sy=(k<2)?-1:1;
+        var hx=p[0]+sx*off, hy=p[1]+sy*off;
+        if(hx-cell*0.5 < this.xy(m[0],0)[0]-cell*0.45 && false) continue;
+        ctx.beginPath();
+        ctx.moveTo(hx, hy); ctx.lineTo(hx+sx*L, hy);
+        ctx.moveTo(hx, hy); ctx.lineTo(hx, hy+sy*L);
+        ctx.stroke();
+      }
+    }, this);
+
+    
+    if(G.sel!==null){
+      var sp=this.xy((G.sel/9)|0, G.sel%9);
+      ctx.strokeStyle='#ffd54a'; ctx.lineWidth=Math.max(2,cell*0.07);
+      ctx.beginPath(); ctx.arc(sp[0],sp[1],cell*0.46,0,Math.PI*2); ctx.stroke();
+    }
+    for(var i=0;i<G.moves.length;i++){
+      var m=G.moves[i];
+      var p=this.xy((m/9)|0, m%9);
+      var occ = G.state && G.state.board[m];
+      if(occ){
+        ctx.strokeStyle='#ff5252'; ctx.lineWidth=Math.max(2,cell*0.07);
+        ctx.beginPath(); ctx.arc(p[0],p[1],cell*0.46,0,Math.PI*2); ctx.stroke();
+      } else {
+        ctx.fillStyle='rgba(60,180,120,.62)';
+        ctx.beginPath(); ctx.arc(p[0],p[1],cell*0.16,0,Math.PI*2); ctx.fill();
+      }
+    }
+    
+    if(G.state && G.state.lastMove){
+      [[G.state.lastMove.from,'rgba(90,160,255,.9)'],[G.state.lastMove.to,'rgba(90,160,255,.9)']].forEach(function(x){
+        var idx=x[0], p=this.xy((idx/9)|0, idx%9);
+        ctx.strokeStyle=x[1]; ctx.lineWidth=Math.max(1.5,cell*0.05);
+        ctx.strokeRect(p[0]-cell*0.46,p[1]-cell*0.46,cell*0.92,cell*0.92);
+      }, this);
+    }
+    
+    var view = G.viewState || G.state;
+    
+    if(view && G.mode==='pvp' && G.phase!=='playing' && !G.cdTimer) view = null;
+    if(view){
+      for(var j=0;j<90;j++){
+        var pc=view.board[j]; if(!pc) continue;
+        this.drawPiece(j, pc);
+      }
+    }
+    /* 按下即高亮：手指落下立刻给出反馈，不用等到抬起 */
+    if(this.pressIdx>=0 && this.pressIdx<90){
+      var pi=this.pressIdx, pr=Math.floor(pi/9), pc=pi%9;
+      var hp=this.xy(pr,pc);
+      ctx.save();
+      ctx.strokeStyle='rgba(255,214,120,.95)';
+      ctx.lineWidth=Math.max(2, cell*0.06);
+      ctx.strokeRect(hp[0]-cell*0.5, hp[1]-cell*0.5, cell, cell);
+      ctx.fillStyle='rgba(255,214,120,.18)';
+      ctx.fillRect(hp[0]-cell*0.5, hp[1]-cell*0.5, cell, cell);
+      ctx.restore();
+    }
+  },
+  drawPiece(idx, p){
+    var ctx=this.ctx, cell=this.cell;
+    var xy=this.xy((idx/9)|0, idx%9);
+    var R=cell*0.43;
+    if(p.faceDown){
+      
+      var g=ctx.createRadialGradient(xy[0]-R*0.3, xy[1]-R*0.3, R*0.1, xy[0], xy[1], R);
+      g.addColorStop(0,'#6f6259'); g.addColorStop(1,'#3f3730');
+      ctx.fillStyle=g;
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=p.color==='red'?'#c96a4a':'#4a4a55'; ctx.lineWidth=Math.max(1.4,cell*0.055);
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=Math.max(1,cell*0.03);
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R*0.66,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle='rgba(255,255,255,.30)';
+      ctx.font='600 '+Math.round(cell*0.34)+'px system-ui,sans-serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      ctx.fillText('?', xy[0], xy[1]+1);
+    } else {
+      var red = p.color==='red';
+      var g2=ctx.createRadialGradient(xy[0]-R*0.3, xy[1]-R*0.35, R*0.1, xy[0], xy[1], R);
+      g2.addColorStop(0,'#fdf0d5'); g2.addColorStop(1,'#e2c79c');
+      ctx.fillStyle=g2;
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle=red?'#a8321e':'#33333c'; ctx.lineWidth=Math.max(1.4,cell*0.055);
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R,0,Math.PI*2); ctx.stroke();
+      ctx.strokeStyle='rgba(0,0,0,.18)'; ctx.lineWidth=Math.max(1,cell*0.02);
+      ctx.beginPath(); ctx.arc(xy[0],xy[1],R*0.80,0,Math.PI*2); ctx.stroke();
+      ctx.fillStyle=red?'#b02a12':'#24242c';
+      ctx.font='700 '+Math.round(cell*0.56)+'px "KaiTi","STKaiti","PingFang SC","Microsoft YaHei",serif';
+      ctx.textAlign='center'; ctx.textBaseline='middle';
+      var cn = Rules.ROLE_CN[p.role] ? Rules.ROLE_CN[p.role][p.color] : '?';
+      ctx.fillText(cn, xy[0], xy[1]+Math.round(cell*0.02));
+    }
+  }
+};
+
+
+/* 两套引擎：mt=多线程（需跨源隔离），st=单线程（兜底） */
+
+/* jieqi 源码里引擎就绪时调 refreshMenuFoot()；本页没有 menu-foot，
+   页脚就是 #ver（版本号）。这里给它一个实现，转发到 UI.refreshVer()。
+   原先这行是未定义调用，靠 try/catch 默默吞掉，导致引擎就绪后版本号不刷新。 */
+function refreshMenuFoot(){
+  try{ if(typeof UI !== 'undefined' && UI.refreshVer) UI.refreshVer(); }catch(e){}
+}
+
+var ENGINE_VARIANTS = {
+  mt: { tag:'多线程',
+        js:  { file:'pikajieqi.js',   sha:'ccde2ff4a842c4f5a6d0b867b57875f5614728cf558852a1857b153563a81c5d' },
+        wasm:{ file:'pikajieqi.wasm', sha:'dfb31ea18d8b435ef49cf2f2631ed9d6f80e70513e6a70eda1e25a72acf07d19' } },
+  st: { tag:'单线程',
+        js:  { file:'pikajieqi-st.js',   sha:'756ace2bbc8136597310795ee62e2450b5f5669020cf8883ff0d8e9dc4f48991' },
+        wasm:{ file:'pikajieqi-st.wasm', sha:'8420b6c6779e9bf8da97128b6e6ea300f382ed599a07f82282aa5430e460a8f5' } }
+};
+var FORCE_ST = false;
+try{ if(localStorage.getItem('jieqi-force-st') === '1') FORCE_ST = true; }catch(e){}
+
+var SESSION_THREADS = null;
+function wantMT(){ return !FORCE_ST && window.crossOriginIsolated === true; }
+
+/* SIMD 预检：引擎二进制是带 SIMD 编译的，Chrome<91 / Firefox<89 无法编译。
+   不预检的话每次进人机都会白下载约 497KB 后才报 Invalid value type 's128'。 */
+var _simdWarned = false;
+var _simd = null;
+function simdSupported(){
+  if(_simd !== null) return _simd;
+  try{
+    _simd = WebAssembly.validate(new Uint8Array([
+      0,97,115,109, 1,0,0,0,
+      1,5,1,96, 0,1,123,
+      3,2,1,0,
+      10,10,1,8, 0,65,0, 253,15, 253,98, 11
+    ]));
+  }catch(e){ _simd = false; }
+  return _simd;
+}
+function kernelTag(){
+  var ua = navigator.userAgent || '';
+  var m = ua.match(/(Chrome|Firefox|Edg|EdgA|CriOS)\/(\d+)/);
+  if(m) return m[1] + '/' + m[2];
+  var v = ua.match(/Version\/(\d+)/);
+  if(v) return 'Safari/' + v[1];
+  return '未知内核';
+}
+function variantKey(){ return wantMT() ? 'mt' : 'st'; }
+function variantOf(){ return ENGINE_VARIANTS[variantKey()]; }
+
+function ck(name){ return variantKey() + ':' + name; }
+var ENGINE_FILES = [ variantOf().js, variantOf().wasm ];
+var REL = './pikajieqi-Pikafish-wasm/';
+var GH_RAW = 'https://raw.githubusercontent.com/kevin-jili/html-ck/main/XiangQi/jieqi/pikajieqi-Pikafish-wasm/';
+/* 顺序即优先级：jsDelivr 会 gzip（wasm 429KB→160KB）通常最快；同源路径次之 */
+
+var ENGINE_SOURCES = [
+  { id:'jsdelivr',  label:'cdn.jsdelivr',     url:'https://cdn.jsdelivr.net/gh/kevin-jili/html-ck@main/XiangQi/jieqi/pikajieqi-Pikafish-wasm/' },
+  { id:'same',      label:'本站同源',          url:REL },
+  { id:'raw',       label:'raw.githubusercontent', url:GH_RAW },
+  { id:'fastly',    label:'fastly.jsdelivr',  url:'https://fastly.jsdelivr.net/gh/kevin-jili/html-ck@main/XiangQi/jieqi/pikajieqi-Pikafish-wasm/' },
+  { id:'xxooo',     label:'gh.xxooo.cf',      url:'https://gh.xxooo.cf/'+GH_RAW },
+  { id:'llkk',      label:'gh.llkk.cc',       url:'https://gh.llkk.cc/'+GH_RAW },
+  { id:'ghproxy',   label:'gh-proxy.com',     url:'https://gh-proxy.com/'+GH_RAW },
+  { id:'ghfast',    label:'ghfast.top',       url:'https://ghfast.top/'+GH_RAW },
+  { id:'hkproxy',   label:'hk.gh-proxy.org',  url:'https://hk.gh-proxy.org/'+GH_RAW }
+];
+var SOURCE_COUNT = ENGINE_SOURCES.length;
+
+
+var Cache = {
+  db:null, name:'jieqi_engine_cache', store:'files',
+  open(){
+    if(this.db) return Promise.resolve(this.db);
+    var self=this;
+    return new Promise(function(res,rej){
+      if(!window.indexedDB){ rej(new Error('浏览器不支持 IndexedDB')); return; }
+      var req;
+      try{ req = indexedDB.open(self.name, 1); }
+      catch(e){ rej(e); return; }
+      req.onupgradeneeded = function(){ var db=req.result; if(!db.objectStoreNames.contains(self.store)) db.createObjectStore(self.store); };
+      req.onsuccess = function(){ self.db=req.result; res(self.db); };
+      req.onerror = function(){ rej(req.error||new Error('IndexedDB 打开失败')); };
+      setTimeout(function(){ if(!self.db) rej(new Error('IndexedDB 超时')); }, 8000);
+    });
+  },
+  async get(key){
+    try{
+      var db = await this.open();
+      return await new Promise(function(res,rej){
+        var tx=db.transaction(['files'],'readonly');
+        var r=tx.objectStore('files').get(key);
+        r.onsuccess=function(){ res(r.result); }; r.onerror=function(){ rej(r.error); };
+      });
+    }catch(e){ return null; }
+  },
+  async put(key, val){
+    try{
+      var db = await this.open();
+      return await new Promise(function(res,rej){
+        var tx=db.transaction(['files'],'readwrite');
+        tx.objectStore('files').put(val, key);
+        tx.oncomplete=function(){ res(true); }; tx.onerror=function(){ rej(tx.error); };
+      });
+    }catch(e){ log('W','写入缓存失败',{key:key,msg:e.message}); return false; }
+  },
+  async clear(){
+    try{
+      var db = await this.open();
+      return await new Promise(function(res,rej){
+        var tx=db.transaction(['files'],'readwrite');
+        tx.objectStore('files').clear();
+        tx.oncomplete=function(){ res(true); }; tx.onerror=function(){ rej(tx.error); };
+      });
+    }catch(e){ return false; }
+  }
+};
+
+
+async function sha256(buf){
+  try{
+    if(window.crypto && crypto.subtle && crypto.subtle.digest){
+      var d = await crypto.subtle.digest('SHA-256', buf);
+      var a = new Uint8Array(d), h='';
+      for(var i=0;i<a.length;i++) h += ('0'+a[i].toString(16)).slice(-2);
+      return h;
+    }
+  }catch(e){}
+  return null;
+}
+function hex8(h){ return h ? h.slice(0,8) : '????????'; }
+
+
+
+async function fetchStream(url, ctl, onChunk){
+  var opt = { cache:'no-store' };
+  if(ctl) opt.signal = ctl.signal;
+  var r = await fetch(url, opt);
+  if(!r.ok) throw new Error('HTTP'+r.status);
+  var len = parseInt(r.headers.get('content-length')||'0', 10);
+  if(r.body && r.body.getReader){
+    var rd = r.body.getReader(), parts=[], got=0;
+    for(;;){
+      var d = await rd.read();
+      if(d.done) break;
+      parts.push(d.value); got += d.value.length;
+      if(onChunk) onChunk(got, len);
+    }
+    return await (new Blob(parts)).arrayBuffer();
+  }
+  var b = await r.arrayBuffer();
+  if(onChunk) onChunk(b.byteLength, len || b.byteLength);
+  return b;
+}
+
+
+function raceFile(file, sources, onProg){
+  return new Promise(function(resolve, reject){
+    var settled=false, ctls=[], failed=0, progState=[];
+    sources.forEach(function(src, i){
+      var ctl = ('AbortController' in window) ? new AbortController() : null;
+      ctls.push(ctl);
+      progState[i] = { got:0, len:0 };
+      (async function(){
+        var buf;
+        try{
+          buf = await fetchStream(src.url + file, ctl, function(got, len){
+            progState[i].got = got; progState[i].len = len;
+          });
+          if(!buf || buf.byteLength===0) throw new Error('空响应');
+        }catch(e){
+          failed++;
+          if(!settled) log('D','下载源失败', { file:file, source:src.label, msg:String(e&&e.message||e).slice(0,70) });
+          if(failed>=sources.length && !settled){
+            settled=true;
+            reject(new Error('全部 '+sources.length+' 个源均下载失败'));
+          }
+          return;
+        }
+        if(settled) return;              
+        settled = true;
+        
+        for(var j=0;j<ctls.length;j++){ if(j!==i && ctls[j]){ try{ ctls[j].abort(); }catch(e){} } }
+        log('I','赛马获胜', { file:file, source:src.label, bytes:buf.byteLength });
+        resolve({ buf:buf, source:src });
+      })();
+    });
+    
+    if(onProg){
+      var t = setInterval(function(){
+        if(settled){ clearInterval(t); return; }
+        var best=null, bi=-1;
+        for(var k=0;k<progState.length;k++){
+          var p=progState[k];
+          if(p.got>0 && (!best || p.got>best.got)){ best=p; bi=k; }
+        }
+        if(best) onProg(best.got, best.len, sources[bi]);
+      }, 200);
+      setTimeout(function(){ clearInterval(t); }, 120000);
+    }
+  });
+}
+
+
+var ENGINE_WORKER_SRC = [
+"var command=null;",
+"function P(m){ self.postMessage(m); }",
+"/* ===== 子 Worker 探针 ===== */",
+"var WW = { list:[], errs:[] };",
+"var _OrigWorker = self.Worker;",
+"self.Worker = function(url, opt){",
+"  var rec = { url:String(url).slice(0,120), t:Date.now()-T0 };",
+"  try{",
+"    var w = new _OrigWorker(url, opt);",
+"    w.addEventListener('error', function(e){ rec.err = (e && e.message) ? e.message : 'error-event'; WW.errs.push(rec); P({type:'probe',kind:'worker-error',data:rec}); });",
+"    w.addEventListener('messageerror', function(){ rec.err='messageerror'; WW.errs.push(rec); });",
+"    WW.list.push(rec);",
+"    /* 不再逐条 postMessage：16 个 Worker 会产生 16 条日志，",
+"       把有效信息全淹没了。改为只在 summary 里汇总上报一次。 */",
+"    return w;",
+"  }catch(e){",
+"    rec.err = (e && e.message) ? e.message : String(e);",
+"    WW.errs.push(rec);",
+"    P({type:'probe',kind:'worker-throw',data:rec});",
+"    throw e;",
+"  }",
+"};",
+"self.Worker.prototype = _OrigWorker.prototype;",
+"var T0 = Date.now();",
+"/* 兜底：捕捉未处理异常（pthread 子线程崩溃会冒泡到这里） */",
+"self.addEventListener('error', function(e){ P({type:'probe',kind:'uncaught',data:{msg:(e&&e.message)||String(e)}}); });",
+"self.addEventListener('unhandledrejection', function(e){ P({type:'probe',kind:'unhandled',data:{msg:String(e&&e.reason)}}); });",
+"self.addEventListener('message', async function(ev){",
+"  var m=ev.data;",
+"  if(!m || m.type!=='boot') return;",
+"  try{",
+"    /* ===== 关键补丁：运行时扩大预建线程池 ===== */",
+"    /* Emscripten 的 PThread.initMainThread() 里写死 var pthreadPoolSize=4；",
+"       超过池子容量的线程要走「动态新建」，而动态新建的 Worker 在 Chromium",
+"       （Edge/Chrome）上拿不到共享内存、初始化永远不返回 —— 表现为",
+"       setoption Threads>2 后 isready 永不回 readyok（Firefox 无此问题）。",
+"       对策：把池子预先扩到够用（线程数×2），让所有线程都走已验证可用的",
+"       预建通道（postMessage 传 wasmModule + wasmMemory），彻底避开动态创建。 */",
+"    var POOL = m.poolSize || 0;",
+"    var jsSrc = m.jsText;",
+"    var POOL_DEFAULT = 4;",
+"    if(POOL && POOL !== POOL_DEFAULT){",
+"      var before = jsSrc;",
+"      jsSrc = jsSrc.replace('var pthreadPoolSize=' + POOL_DEFAULT + ';', 'var pthreadPoolSize=' + POOL + ';');",
+"      var hit = (jsSrc !== before);",
+"      P({type:'probe',kind:'pool',data:{ 请求:POOL, 命中:hit, 实际:hit?POOL:POOL_DEFAULT }});",
+"    }else{",
+"      P({type:'probe',kind:'pool',data:{ 请求:POOL, 命中:false, 实际:POOL_DEFAULT }});",
+"    }",
+"    var burl=URL.createObjectURL(new Blob([jsSrc], {type:'text/javascript'}));",
+"    try{ importScripts(burl); } finally { URL.revokeObjectURL(burl); }",
+"    if(typeof self.PikaJieQi !== 'function') throw new Error('引擎工厂缺失');",
+"    P({type:'prog', stage:'compile'});",
+"    /* pthread 子 Worker 的派生地址：优先用【真实同源 URL 字符串】。",
+"       传 Blob 时子 Worker 也是 blob: 开头，部分内核（如 Edge 桌面版）",
+"       不允许在 Worker 内再派生 blob: Worker，表现为 setoption Threads=N",
+"       之后 isready 永不返回 readyok。真实 https URL 无此限制。 */",
+"    /* locateFile：子 Worker（pthread）需要自己加载 .wasm / .js。",
+"       主 Worker 是 blob: URL，若不覆盖，路径会被解析成 blob:http://host/xxx.wasm，",
+"       fetch 失败且静默卡住 —— 表现为 setoption Threads=N 后 isready 永不返回。",
+"       这里把所有资源路径改指向真实同源 URL。 */",
+"    var BASE = m.baseUrl || '';",
+"    P({type:'probe',kind:'base',data:{ base:BASE || '(空! locateFile 不生效)' }});",
+"    function locate(p){",
+"      if(!BASE) return p;",
+"      if(/\.wasm$/i.test(p) || /\.js$/i.test(p)){",
+"        var sn = p.lastIndexOf('/'); return BASE + (sn >= 0 ? p.substring(sn + 1) : p);",
+"      }",
+"      return p;",
+"    }",
+"    P({type:'probe',kind:'locate',data:{ base:BASE }});",
+"    var mod = await self.PikaJieQi({",
+"      wasmBinary: new Uint8Array(m.wasm),",
+"      mainScriptUrlOrBlob: new Blob([m.jsText], {type:'text/javascript'}),",
+"      locateFile: locate,",
+"      print: function(l){ P({type:'line', line:String(l)}); },",
+"      printErr: function(l){ P({type:'stderr', line:String(l)}); }",
+"    });",
+"    var init = mod.cwrap('pikajieqi_initialize', null, []);",
+"    command = mod.cwrap('pikajieqi_command', null, ['string']);",
+"    init();",
+"    P({type:'probe',kind:'summary',data:{ created:WW.list.length, urls:WW.list.map(function(x){return x.url.slice(0,60);}), errs:WW.errs.slice(0,5) }});",
+"    P({type:'ready'});",
+"  }catch(e){ P({type:'error', error:(e && e.message) ? e.message : String(e)}); }",
+"});",
+"self.addEventListener('message', function(ev){",
+"  var m=ev.data;",
+"  if(m && m.type==='command' && typeof m.command==='string'){",
+"    if(!command){ P({type:'error', error:'引擎未就绪'}); return; }",
+"    try{ command(m.command); }catch(e){ P({type:'error', error:String(e && e.message)}); }",
+"  }",
+"});"
+].join('\n');
+
+
+var ENGINE = {
+  worker:null, ready:null, sourceLabel:'-', fromCache:false,
+  searching:false, token:0, queue:Promise.resolve(), lines:[],
+  variant:'st', threads:1, hash:32, hashSet:false,
+  handshakeDone:false, lastError:null,
+  info:{ depth:0, score:null, nodes:0, hashfull:0, nps:0 },
+
+  /* 线程数策略（v3.0 起）：
+     ① 用户手动指定 → 直接用
+     ② 上次成功跑通过的值 → 直接用（避免每次都去撞注定失败的高档位）
+     ③ 否则 = CPU 核心数（设备多少核就用多少核，不再砍半封顶 4）
+     上限 32，下限 1。 */
+
+  /* 线程数策略（v3.4.0 起，已简化）：
+     实测两台设备（E3-1230v3 4核8线程 / K90 真8核）各档对比，
+     「用满核心数」在两台机器上都是 nps 最高档，因此不再做任何探测，
+     直接 = CPU 核心数。设置页「记住线程数」开关打开时才用用户设的值。 */
+
+  cores(){
+    var c = navigator.hardwareConcurrency || 1;
+    return Math.max(1, Math.min(64, c|0));
+  },
+  threadsRemember(){
+    try{ return localStorage.getItem('jieqi-threads-remember') === '1'; }catch(e){ return false; }
+  },
+  pickThreads(){
+    
+    if(typeof SESSION_THREADS === 'number' && SESSION_THREADS >= 1 && SESSION_THREADS <= this.cores())
+      return SESSION_THREADS;
+    if(this.threadsRemember()){
+      var v = null;
+      try{ v = parseInt(localStorage.getItem('jieqi-threads'), 10); }catch(e){}
+      if(v && v >= 1 && v <= this.cores()) return v;
+    }
+    return this.cores();
+  },
+  /* 握手成功后不再写任何线程记录（v3.4 起无「上次成功」概念） */
+
+  rememberThreads(t){ /* 保留空实现，避免调用点报错 */
+ },
+
+  /* 建议 Hash = 线程数 × 32MB（多线程共享一张置换表，线程越多越要大，
+     否则多个线程抢同一块小表，冲突率飙升，深度反而下降） */
+
+  suggestedHash(){
+    var t = (this.variant === 'mt') ? (this.threads || 1) : 1;
+    return Math.max(16, Math.min(1024, t * 32));
+  },
+  currentHash(){ return this.hash || 32; },
+  /* 按难度设置 Hash，失败自动减半重试 */
+
+  async setHash(mb){
+    mb = Math.max(1, Math.min(2048, mb|0));
+    var tries = [mb, Math.floor(mb/2), Math.floor(mb/4), 16, 1];
+    for(var i=0;i<tries.length;i++){
+      var v = tries[i];
+      if(v < 1) continue;
+      try{
+        this.send('setoption name Hash value ' + v);
+        await this.cmdWait('isready', 'readyok', 15000);
+        this.hash = v;
+        log('I','设置Hash', { mb:v });
+        return v;
+      }catch(e){
+        log('W','设置Hash失败，减半重试', { mb:v, msg:e.message });
+      }
+    }
+    this.hash = 16;
+    return 16;
+  },
+  
+  parseInfo(line){
+    if(line.indexOf('info') !== 0) return null;
+    var d = /\bdepth (\d+)/.exec(line);
+    var n = /\bnodes (\d+)/.exec(line);
+    var h = /\bhashfull (\d+)/.exec(line);
+    var p = /\bnps (\d+)/.exec(line);
+    var o = { depth: d ? parseInt(d[1],10) : this.info.depth,
+              nodes: n ? parseInt(n[1],10) : this.info.nodes,
+              hashfull: h ? parseInt(h[1],10) : this.info.hashfull,
+              nps: p ? parseInt(p[1],10) : this.info.nps,
+              score: this.info.score, mate:null, side:this.infoSide };
+    var cp = /\bscore cp (-?\d+)/.exec(line);
+    var mt = /\bscore mate (-?\d+)/.exec(line);
+    if(cp) o.score = parseInt(cp[1],10);
+    else if(mt){ o.mate = parseInt(mt[1],10); o.score = mt[1] > 0 ? 99999 : -99999; }
+    if(/\blowerbound\b/.test(line) || /\bupperbound\b/.test(line)) o.score = this.info.score;
+    this.info = o;
+    return o;
+  },
+
+  
+  boot(jsText, wasmBuffer, onProgress, opt){
+    opt = opt || {};
+    if(opt.poolSize == null && opt.threads && opt.threads !== 'skip'){
+      opt.poolSize = this.poolSizeFor(opt.threads);
+    }
+    var self=this;
+    /* 关键：进入新一次 boot 前，先彻底销毁上一个 Worker。
+       否则旧 Worker 的 pthread 子线程还活着，共享内存被占，
+       新 Worker 再申请线程就会失败 —— 表现为「高档位永远超时」。 */
+
+    if(self.worker){
+      try{ self.worker.terminate(); }catch(e){}
+      self.worker = null;
+    }
+    self.probeCreated = 0; self.probeSummary = null; self.poolInfo = null;
+    return new Promise(function(resolve, reject){
+      var wurl = URL.createObjectURL(new Blob([ENGINE_WORKER_SRC], {type:'text/javascript'}));
+      var w;
+      try{ w = new Worker(wurl); }catch(e){ reject(new Error('Worker 创建失败: '+e.message)); return; }
+      /* settled = Promise 已 resolve/reject；readyGot = 已收到 wasm ready。
+         早期版本在收到 ready 时就把 settled 置 true，导致后面握手失败时
+         fail() 直接 return —— Promise 永远不 settle，界面无限「正在加载引擎…」，
+         且没有任何报错落地（Edge 上正是被这个坑死）。两者必须分开。 */
+
+      var settled=false, readyGot=false;
+      function fail(msg){
+        if(settled) return;
+        settled=true; clearTimeout(tmo);
+        /* 必须销毁：pthread 子 Worker 若不终止会残留并占用共享内存，
+           后续换线程数重试时可能因此拿不到新线程（僵尸线程）。 */
+
+        try{ w.terminate(); }catch(e){}
+        if(self.worker===w){ self.worker=null; }
+        self.handshakeDone=false;
+        reject(new Error(msg));
+      }
+      w.onmessage = function(ev){
+        var m=ev.data;
+        if(m.type==='line'){
+          try{ if(self.parseInfo(m.line)) maybePaintScore(); }catch(e){}
+          if(m.line.indexOf('bestmove')===0) self.searching=false;
+          var ls=self.lines.slice();
+          for(var i=0;i<ls.length;i++){ try{ ls[i](m.line); }catch(e){ log('E','引擎行回调异常',{msg:e.message}); } }
+        } else if(m.type==='probe'){
+          /* 子 Worker 探针：诊断「为什么开不到 N 线程」的关键数据 */
+
+          try{
+            var k = m.kind, d = m.data || {};
+            if(k === 'worker-created'){
+              self.probeCreated = (self.probeCreated||0) + 1;   
+            }else if(k === 'worker-throw'){
+              log('E','子Worker创建抛错', { url:d.url, err:d.err });
+            }else if(k === 'worker-error'){
+              log('E','子Worker运行出错', { url:d.url, err:d.err });
+            }else if(k === 'uncaught'){
+              log('E','Worker未捕获异常', { msg:d.msg });
+            }else if(k === 'unhandled'){
+              log('E','Worker未处理拒绝', { msg:d.msg });
+            }else if(k === 'base'){
+              self.probeBase = d.base;
+              log('I','引擎资源基准路径', d);
+            }else if(k === 'pool'){
+              self.poolInfo = d;
+              
+              if(self.variant === 'mt') log('I','预建线程池', d);
+            }else if(k === 'summary'){
+              self.probeSummary = d;
+              log('I','Worker探针汇总', { 已创建子Worker:d.created, urls:d.urls,
+                                         错误:d.errs });
+            }
+          }catch(e){}
+        } else if(m.type==='stderr'){
+          log('W','引擎stderr',{ line:m.line });
+        } else if(m.type==='error'){
+          log('E','引擎启动失败', { error:m.error });
+          fail(m.error||'引擎启动失败');
+        } else if(m.type==='ready'){
+          if(readyGot) return;
+          readyGot=true;                    /* 只防止重复处理，不代表成功 */
+
+          self.worker=w;
+          (async function(){
+            var step='初始化';
+            try{
+              step='uci 握手';
+              await self.cmdWait('uci','uciok',20000);
+              log('I','握手通过 · uci', { variant:self.variant });
+
+              step='设置 MultiPV';
+              self.send('setoption name MultiPV value 1');
+
+              
+              /* 单次尝试：线程数由 opt.threads 指定（或自动）。
+                 失败即整体失败 —— 因为 setoption Threads=N 一旦触发子 Worker 创建失败，
+                 该 Worker 内部状态已损坏，在同一个 Worker 上改小线程数也救不回来。
+                 重试必须由外层用【全新 Worker】来做（见 _bootMT）。 */
+
+              self.threads = (self.variant === 'mt')
+                ? ((opt.threads === 'skip' || opt.threads == null) ? self.pickThreads() : (opt.threads|0))
+                : 1;
+              if(self.variant === 'mt'){
+                if(opt.threads === 'skip'){
+                  self.threads = 1;
+                  log('W','跳过 Threads 设置（以引擎默认线程数运行）', { variant:self.variant });
+                }else{
+                  step='设置 Threads=' + self.threads;
+                  self.send('setoption name Threads value ' + self.threads);
+                  /* 失败就是失败：实测失败时永远不返回，等 25 秒纯属浪费（v3 起 4 秒） */
+
+                  await self.cmdWait('isready','readyok',4000);
+                  log('I','握手通过 · Threads', { threads:self.threads });
+                }
+              }
+
+              /* Hash 下限：多线程下至少用「线程数 × 32MB」，避免抢表。
+                 难度档位给的 Hash 若更大则沿用档位值。 */
+
+              var hMin = (self.variant === 'mt') ? self.suggestedHash() : 16;
+              step='设置 Hash=' + Math.max(hMin, self.currentHash()) + 'MB';
+              await self.setHash(Math.max(hMin, self.currentHash()));
+              log('I','握手通过 · Hash', { hash:self.hash });
+
+              settled=true; clearTimeout(tmo);
+              self.handshakeDone=true;
+              self.rememberThreads(self.threads);
+              log('I','引擎就绪', { variant:self.variant, threads:self.threads, hash:self.hash,
+                                   source:self.sourceLabel, fromCache:self.fromCache });
+              try{ UI.refreshVer(); }catch(e){}
+              resolve();
+            }catch(e){
+              log('E','握手失败', { 卡在:step, variant:self.variant, threads:self.threads,
+                                   已创建子Worker:self.probeCreated||0,
+                                   探针:self.probeSummary||null, msg:e.message });
+              fail('UCI握手失败（卡在「'+step+'」）：' + e.message);
+            }
+          })();
+        }
+      };
+      w.onerror = function(ev){ log('E','Worker异常',{message:ev.message}); fail('Worker 异常: '+ev.message); };
+      var tmo = setTimeout(function(){ fail('引擎启动超时（60秒）'); }, 60000);
+      
+      try{
+        var copy = wasmBuffer.slice(0);
+        w.postMessage({ type:'boot', jsText:jsText, wasm:copy, baseUrl:opt.baseUrl||'', poolSize:opt.poolSize||0 }, [copy]);
+      }catch(e){
+        w.postMessage({ type:'boot', jsText:jsText, wasm:wasmBuffer.slice(0), baseUrl:opt.baseUrl||'', poolSize:opt.poolSize||0 });
+      }
+    });
+  },
+
+  /* 多线程启动：逐级降低线程数，每级都用【全新 Worker】。
+     序列例如 8核 → 4 → 2 → 1 → skip（完全不设 Threads）。
+     实测 setoption Threads=N 失败后该 Worker 即损坏，必须重建；
+     最后一步「不设 Threads」让引擎保持默认线程数，兼容性最好。 */
+
+  async _bootMT(jsText, wasm, prog, baseUrl){
+    if(!baseUrl) baseUrl = this.engineBaseUrl();     /* 兜底，避免任何调用点漏传 */
+
+    var wantT = this.pickThreads();
+    /* v3.4 起不再逐档探测：实测「用满核心数」在两台设备（4核8线程 PC /
+       真8核手机）上都是 nps 最高档，直接用核心数即可。
+       预建池已按「核心数×2+2」预留，正常一次成功。
+       仍保留降档兜底：万一该档起不来（极端内核 / 内存不足），
+       依次退到 核心数一半 → 2 → 1 → skip（完全不设 Threads）。 */
+
+    var seq = [], cand = [wantT, Math.floor(wantT/2), 2, 1];
+    for(var i=0;i<cand.length;i++){ var t=cand[i]; if(t>=1 && seq.indexOf(t)<0) seq.push(t); }
+    seq.push('skip');
+    var lastErr = '';
+    for(var k=0;k<seq.length && k<5;k++){
+      var cur = seq[k];
+      try{
+        await this.boot(jsText, wasm, prog, { threads:cur, baseUrl:baseUrl||'',
+                                              poolSize: this.poolSizeFor(cur) });
+        if(cur !== wantT) log('W','多线程线程数已降级', { 期望:wantT, 实际:(cur==='skip'?1:cur) });
+        return;
+      }catch(e){
+        lastErr = e.message;
+        log('W','多线程启动失败，降低线程数重试', {
+          尝试:(cur==='skip'?'不设Threads':cur), 下一个:(seq[k+1]==='skip'?'不设Threads':seq[k+1]),
+          msg:e.message });
+        this.worker = null; this.handshakeDone = false;
+        prog('多线程启动失败，正在降低线程数重试…');
+      }
+    }
+    throw new Error('多线程各档均失败（' + seq.join('/') + '）：' + lastErr);
+  },
+
+  /* 预建线程池大小。
+     实测引擎每个搜索线程约对应 2 个 Worker（含辅助线程），
+     故按「核心数 × 2 + 2」预留，保证用满核心数时全部走预建通道
+     （预建通道已验证可用；动态新建的 Worker 在 Chromium 上会卡死）。
+     上限 34，避免低端设备预建过多 Worker 导致启动缓慢或内存吃紧。 */
+
+  poolSizeFor(threads){
+    return Math.max(4, Math.min(34, this.cores() * 2 + 2));
+  },
+
+  /* 引擎文件所在目录的绝对 URL —— 供 pthread 子 Worker 加载 wasm/js 用。
+     这是「能否开到 2 线程以上」的关键：子 Worker 是 blob: URL，
+     若不显式给出基准路径，它会去 fetch blob:https://host/pikajieqi.wasm 而静默失败。 */
+
+  engineBaseUrl(){
+    try{
+      var u = new URL(REL, location.href).href;
+      if(u && u.charAt(u.length-1) !== '/') u += '/';
+      return u;
+    }catch(e){}
+    try{
+      var h = location.href;
+      return h.substring(0, h.lastIndexOf('/')+1);
+    }catch(e){ return ''; }
+  },
+
+  /* 网络下载 + 落盘 + 启动。启动失败且当前是多线程时，自动降级单线程重试一次。 */
+
+  _degraded:false,
+  async _loadFromNet(prog, t0){
+    var self=this;
+    var V = variantOf();
+    self.variant = variantKey();
+
+    prog('正在从 '+SOURCE_COUNT+' 个源并发下载引擎脚本（' + V.tag + '）…');
+    var rJs = await raceFile(V.js.file, ENGINE_SOURCES, function(got,len,src){
+      prog('下载引擎脚本 ' + Math.round(got/1024) + 'KB · ' + src.label);
+    });
+    var jsText = new TextDecoder('utf-8').decode(rJs.buf);
+    if(jsText.indexOf('PikaJieQi')<0) throw new Error('引擎脚本内容异常（'+rJs.source.label+'）');
+    var hJs = await sha256(rJs.buf);
+    if(hJs && hJs !== V.js.sha){
+      log('W','引擎脚本哈希不匹配', { got:hex8(hJs), source:rJs.source.label });
+    }
+
+    prog('正在从 '+SOURCE_COUNT+' 个源并发下载引擎核心（' + V.tag + '）…');
+    var rW = await raceFile(V.wasm.file, ENGINE_SOURCES, function(got,len,src){
+      prog('下载引擎核心 ' + Math.round(got/1024) + 'KB · ' + src.label);
+    });
+    var hW = await sha256(rW.buf);
+    if(hW !== V.wasm.sha){
+      throw new Error('引擎核心校验失败（'+hex8(hW)+'），已放弃该来源');
+    }
+
+    self.sourceLabel = rJs.source.label + ' / ' + rW.source.label;
+
+    
+    prog('校验通过，正在写入本地缓存…');
+    try{
+      await Cache.put(ck(V.js.file), rJs.buf);
+      await Cache.put(ck(V.wasm.file), rW.buf);
+      log('I','引擎已缓存', { variant:self.variant, js:rJs.buf.byteLength,
+                              wasm:rW.buf.byteLength, source:self.sourceLabel });
+    }catch(e){ log('W','缓存写入失败',{msg:e.message}); }
+
+    /* 再启动引擎。
+       两级重试：① 真实同源 URL（子 Worker 兼容性最好）
+                ② blob URL（兜底，某些环境无同源文件时可用）
+       两者都失败且当前是多线程 → 自动降级单线程。 */
+
+    prog('正在编译引擎…');
+    try{
+      var BU = self.engineBaseUrl();
+      if(self.variant === 'mt') await self._bootMT(jsText, rW.buf, prog, BU);
+      else await self.boot(jsText, rW.buf, prog, { baseUrl:BU });
+    }catch(e){
+      self.lastError = e.message;
+      if(self.variant === 'mt' && !FORCE_ST && !self._degraded){
+        self._degraded = true;
+        log('W','多线程启动失败，自动降级单线程', { 原因:e.message });
+        
+        FORCE_ST = true;
+        self.ready = null; self.worker = null; self.handshakeDone = false;
+        self.variant = 'st'; self.threads = 1;
+        prog('多线程启动失败，已自动改用单线程…');
+        return await self._loadFromNet(prog, t0);
+      }
+      throw e;
+    }
+  },
+
+  preload(onProgress){
+    if(this.ready) return this.ready;
+    var self=this;
+    this.ready = (async function(){
+      var t0=Date.now();
+      function prog(t){ try{ onProgress && onProgress(t); }catch(e){} }
+
+      var V = variantOf();
+      self.variant = variantKey();
+      self.hash = HASH_OF(G.level || 'normal');
+      var firstVariant = self.variant;
+      self.lastError = null;
+      self.simdBlocked = false;
+
+      /* 预检：不支持 SIMD 就不下载，直接告知换浏览器 */
+      if(!simdSupported()){
+        self.simdBlocked = true;
+        self.lastError = '浏览器内核不支持 WebAssembly SIMD';
+        log('E','SIMD 预检失败，已阻止下载', { kernel:kernelTag() });
+        if(!_simdWarned){
+          _simdWarned = true;
+          infoBox('浏览器内核不支持 WebAssembly SIMD\n\n当前浏览器 ' + kernelTag() +
+            ' 版本过旧，无法运行本游戏引擎。\n请升级到 Chrome / Edge 91+ 或 Firefox 89+ 后重试，或改用系统自带浏览器打开。');
+        }
+        throw new Error(self.lastError);
+      }
+
+      
+      try{
+        var cjs = await Cache.get(ck(V.js.file));
+        var cwasm = await Cache.get(ck(V.wasm.file));
+        if(cjs && cwasm && cjs.byteLength>1000 && cwasm.byteLength>100000){
+          // 复制一份，避免后续操作影响缓存数据
+          var h = await sha256(cwasm);
+          if(h === V.wasm.sha){
+            self.fromCache = true;
+            self.sourceLabel = '本地缓存';
+            prog('使用本地缓存（' + V.tag + '），校验通过…');
+            var txt = new TextDecoder('utf-8').decode(cjs);
+            try{
+              /* 必须传 baseUrl：否则 locateFile 拿不到基准路径，
+                 动态新建的 pthread 子 Worker 会去 fetch blob:https://host/xxx.wasm 而失败，
+                 表现为「Threads>2 就卡死」。缓存分支此前漏传，正是用户遇到的情况。 */
+
+              var CBU = self.engineBaseUrl();
+              if(self.variant === 'mt') await self._bootMT(txt, cwasm.slice(0), prog, CBU);
+              else await self.boot(txt, cwasm.slice(0), prog, { baseUrl:CBU });
+              log('I','引擎来自缓存', { variant:self.variant, ms:Date.now()-t0 });
+              return;
+            }catch(e){
+              self.lastError = e.message;
+              log('E','缓存引擎启动失败', { variant:self.variant, msg:e.message });
+
+              /* 环境类失败（内核不支持 SIMD 等）清了也是白清，反而丢掉好缓存；
+                 只有疑似文件损坏才清，让下次重新下载。 */
+              var envFail = /simd|s128|Invalid value type|CompileError|LinkError/i.test(e.message||'');
+              if(!envFail){ try{ await Cache.clear(); }catch(_){} }
+              else log('W','环境类失败，保留缓存', { msg:e.message });
+              if(firstVariant === 'mt' && !FORCE_ST && !self._degraded){
+                log('W','多线程启动失败，自动降级单线程', { 原因:e.message });
+                self._degraded = true;
+                /* 不写 localStorage：降级只对本次会话有效，
+                   下次打开仍会重新检测并尝试多线程 */
+
+                FORCE_ST = true;
+                self.variant = 'st'; self.threads = 1;
+                prog('多线程启动失败，已自动改用单线程…');
+                return await self._loadFromNet(prog, t0);
+              }
+              self.ready = null;
+              throw e;
+            }
+          }
+          log('W','缓存校验失败，重新下载', { got:hex8(h) });
+          await Cache.clear();
+        }
+      }catch(e){ log('W','缓存读取失败',{msg:e.message}); }
+
+      /* 2) 走网络下载并启动（内部自带 多线程→单线程 降级） */
+
+      await self._loadFromNet(prog, t0);
+    })().catch(function(e){
+      self.lastError = e.message;
+      self.ready=null; self.worker=null;
+      log('E','引擎加载失败', { msg:e.message });
+      throw e;
+    });
+    return this.ready;
+  },
+
+  send(cmd){ if(!this.worker) throw new Error('引擎未就绪'); this.worker.postMessage({ type:'command', command:cmd }); },
+  onLine(fn){ this.lines.push(fn); var self=this; return function(){ var i=self.lines.indexOf(fn); if(i>=0) self.lines.splice(i,1); }; },
+  waitFor(pred, ms){
+    var self=this;
+    return new Promise(function(res){
+      var timer=setTimeout(function(){ off(); res(null); }, ms||20000);
+      var off=self.onLine(function(line){ if(pred(line)){ clearTimeout(timer); off(); res(line); } });
+    });
+  },
+  cmdWait(cmd, expect, ms){
+    var p=this.waitFor(function(l){ return l.indexOf(expect)===0; }, ms||15000);
+    this.send(cmd);
+    return p.then(function(l){ if(!l) throw new Error('等待 '+expect+' 超时'); return l; });
+  },
+  stop(){ this.token++; if(this.searching && this.worker){ try{ this.send('stop'); }catch(e){} } },
+  search(fen, opt){
+    var self=this;
+    var run=function(){ return self.searchNow(fen, opt||{}); };
+    var next=this.queue.then(run, run);
+    this.queue=next.then(function(){}, function(){});
+    return next;
+  },
+  async searchNow(fen, opt){
+    await this.preload();
+    var my=++this.token;
+    if(this.searching){ await this.waitFor(function(l){ return l.indexOf('bestmove')===0; }, 5000); this.searching=false; }
+    if(this.token!==my) return { best:null, ok:false, aborted:true };
+    this.send('setoption name MultiPV value 1');
+    this.send('position fen '+fen);
+    var self=this, best=null;
+    /* 评分是「本次搜索的走子方」视角。落子后 st.turn 会换边，
+       若不在这里记下，显示时按新走子方换算就会把优劣说反。 */
+    var sideFen = (fen||'').split(/\s+/)[1];
+    this.infoSide = (sideFen === 'b') ? 'black' : 'red';
+    this.searching=true;
+    var p=this.waitFor(function(l){ return l.indexOf('bestmove')===0; }, (opt.movetime||0)+25000);
+    this.send(opt.movetime ? ('go movetime '+Math.round(opt.movetime)) : ('go depth '+(opt.depth||1)));
+    var line=await p;
+    this.searching=false;
+    if(line){ var parts=line.split(/\s+/); best=(parts[1]&&parts[1]!=='(none)')?parts[1]:null; }
+    var inf = this.info || {};
+    return { best:best, ok:(this.token===my && !!best), aborted:(this.token!==my),
+             score:(inf.score==null?null:inf.score), mate:(inf.mate==null?null:inf.mate), side:this.infoSide };
+  }
+};
+
+
+var _optLockAt = 0, _OPT_COOL = 400;
+function optRow(items, cur, onPick){
+  var box = el('div');
+  var nodes = [];
+  items.forEach(function(it){
+    var o = el('div','opt'+(it.key===cur?' sel':''));
+    if(it.icon) o.appendChild(el('span','ic',it.icon));
+    var tx = el('span','t',it.label);
+    o.appendChild(tx);
+    if(it.desc) o.appendChild(el('span','d2',it.desc));
+    o.onclick = function(){
+      if(it.key === cur) return;
+      var n = Date.now();
+      if(n - _optLockAt < _OPT_COOL) return;
+      _optLockAt = n;
+      cur = it.key;
+      nodes.forEach(function(x){ x.o.classList.remove('sel'); });
+      o.classList.add('sel');
+      Snd.tap(); Hap.tap();
+      onPick(it.key);
+    };
+    nodes.push({o:o, it:it});
+    box.appendChild(o);
+  });
+  return box;
+}
+
+
+function netBar(title, backFn, opt){
+  opt = opt || {};
+  var bar = el('div','netbar');
+  var bk = el('button','bk','‹');
+  bk.setAttribute('aria-label','返回');
+  bk.onclick = function(){ Snd.tap(); Hap.tap(); backFn ? backFn() : renderHome(); };
+  bar.appendChild(bk);
+  bar.appendChild(el('div','tt', title));
+  bar.appendChild(el('div','ph'));
+  app.appendChild(bar);
+  return bar;
+}
+
+
+function pickEngineMove(state, color, best){
+  var from=-1, to=-1;
+  if(best){ from = Rules.uciToIdx(best.slice(0,2)); to = Rules.uciToIdx(best.slice(2,4)); }
+  var legal = (from>=0) ? Rules.legalMoves(state, from) : [];
+  if(from>=0 && to>=0 && legal.indexOf(to)>=0) return { from:from, to:to, fallback:false };
+  var all = Rules.allLegal(state, color);
+  if(!all.length) return null;
+  var mv = all[randInt(all.length)];
+  return { from:mv.from, to:mv.to, fallback:true };
+}
+
+
+
+function renderPveSetup(){
+  clearApp();
+
+  
+  netBar('人 机 对 战', renderHome);
+
+  var page = el('div','page');
+  page.style.justifyContent='flex-start';
+  var LV_ICON = { easy:'🌱', normal:'🔥', hard:'👑', nightmare:'👹', peak:'🐉' };
+  var c1 = el('div','card'); c1.appendChild(el('h3','','难度'));
+  c1.appendChild(optRow(
+    Object.keys(LEVELS).map(function(k){ return {key:k, icon:LV_ICON[k], label:LEVELS[k].name, desc:LEVELS[k].desc}; }),
+    G.level, function(k){ G.level=k; log('I','选择难度',{level:k}); renderPveSetup(); }));
+  var c2 = el('div','card'); c2.appendChild(el('h3','','我执'));
+  var o2 = optRow([
+    {key:'red',   icon:'🔴', label:'红方（先手）', desc:''},
+    {key:'black', icon:'⚫', label:'黑方（后手）', desc:''}
+  ], G.humanColor, function(k){ G.humanColor=k; log('I','选择执子',{color:k}); renderPveSetup(); });
+  /* 红黑同一行，各占一半，省出一行的高度 */
+
+  o2.style.cssText='display:flex;gap:8px';
+  [].forEach.call(o2.children, function(x){ x.style.cssText='flex:1;min-width:0'; });
+  c2.appendChild(o2);
+  page.appendChild(c1); page.appendChild(c2);
+
+  var go = el('button','btn pri','开始对局'); go.style.maxWidth='320px';
+  /* .btn 默认 flex:1 1 auto，纵向容器里会被拉伸：视口越高按钮越胖，全屏后可达 109px */
+
+  go.style.flex='0 0 auto';
+  go.onclick = startPve;
+  page.appendChild(go);
+  app.appendChild(page);
+}
+
+/* 点「开始对局」立刻进棋盘摆出初始暗子局面，加载进度写在状态行（复用 updateStatus 的
+   loading 分支），加载完自动开局；失败才弹窗，且失败前不绘制任何失败 UI。 */
+function pveLoading(txt){
+  G.loading = txt;
+  try{ updateScoreBar(); }catch(e){}
+}
+async function startPve(){
+  clearApp();
+  G.mode='pve';
+  G.humanColor = G.humanColor||'red';
+  G.aiColor = Rules.other(G.humanColor);
+  G.flip = (G.humanColor==='black');
+  G.state = Rules.newGame();
+  G.sel=null; G.moves=[]; G.thinking=false; G.ponder=null;
+  G.history=[]; G.viewState=Rules.viewFor(G.state, G.humanColor);
+  G.loading='准备中…';
+  renderGame();
+  Board.resize(); Board.draw();
+  updateStatus();
+  var t0 = Date.now();
+  function loadMsg(txt){
+    pveLoading(txt + ' · 已用时 ' + ((Date.now()-t0)/1000).toFixed(0) + ' 秒');
+  }
+  try{
+    await ENGINE.preload(loadMsg);
+    G.loading = null;
+    log('I','开始人机对局', { level:G.level, human:G.humanColor, engineSource:ENGINE.sourceLabel, fromCache:ENGINE.fromCache });
+    updateStatus();
+    if(G.aiColor==='red') setTimeout(aiTurn, 350);
+  }catch(e){
+    G.loading = null;
+    try{ updateScoreBar(); }catch(e2){}
+    log('E','启动人机失败',{msg:e.message});
+    if(ENGINE.simdBlocked) return;   /* 已弹过 SIMD 专属提示，不再套一层"加载失败" */
+    /* 左「返回」右「重试」：askBox 的按钮顺序就是 [noTxt, yesTxt]，直接复用即可 */
+
+    askBox('引擎加载失败：' + e.message + '\n已用时 ' + ((Date.now()-t0)/1000).toFixed(1) + ' 秒',
+      '重试', function(){
+        ENGINE.ready=null; ENGINE.worker=null; ENGINE.lastError=null; startPve();
+      }, '返回', renderHome);
+  }
+}
+
+
+
+/* 联机测试专用三个按钮：踢出对手 / 邀请机器人 / 解散房间。
+   只有走「联机测试」入口（ON.testMode）才有，正常联机不显示。 */
+function simBtnsFrag(mk){
+  var frag = document.createDocumentFragment();
+  if(!ON.testMode) return frag;
+  frag.appendChild(mk('踢出对手', function(){
+    confirmBox('确定踢出对手？', function(){ netKickBot(); });
+  }));
+  frag.appendChild(mk('邀请机器人', function(){
+    if(BOT.on){ toast('机器人已在房间里'); return; }
+    if(!ON.room){ toast('还没进入房间'); return; }
+    netSend({ t:'kick' });
+    if(ON.role==='host') botJoin(ON.room);
+    else toast('仅房主可邀请机器人');
+  }));
+  frag.appendChild(mk('解散房间', function(){
+    confirmBox('解散将终止对局并回收房间号，确定？', function(){
+      netSend({ t:'kick' }); netLeave(); renderNetTest();
+    });
+  }));
+  return frag;
+}
+function renderGame(){
+  clearApp();
+  
+  var top = el('div','topbar');
+  var titleTxt;
+  titleTxt = (G.mode==='pve') ? ('人机 · '+LEVELS[G.level].name)
+           : ('联机 · ' + (ON.room||'') + (ON.role==='host' ? ' · 房主' : ' · 客机') + (ON.testMode ? ' · 测试' : ''));
+  var title = el('h1','', titleTxt);
+  top.appendChild(title);
+  var sp = el('div','sp'); top.appendChild(sp);
+  var bquit = el('button','btn sm','退出');
+  bquit.style.flex='0 0 auto';
+  bquit.onclick = function(){
+    var msg = '当前对局进度将丢失，确定退出？';
+    confirmBox(msg, function(){
+      try{ document.body.classList.remove('playing'); }catch(e){}
+      try{ var ap=document.getElementById('app'); if(ap) ap.classList.remove('immersive'); }catch(e){}
+      if(document.fullscreenElement || document.webkitFullscreenElement){
+        try{ if(document.exitFullscreen) document.exitFullscreen();
+             else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch(e){}
+      }
+      log('I','退出对局', { mode:G.mode, ply: G.state ? G.state.ply : 0 });
+      var wasTest = ON.testMode;
+      netLeave();
+      if(wasTest) renderNetTest();
+      else if(G.mode==='pve') renderPveSetup();
+      else renderNetSetup();
+    });
+  };
+  top.appendChild(bquit);
+  var bg = el('button','gear','⚙');
+  bg.setAttribute('aria-label','设置');
+  bg.onclick = openDrawer;
+  top.appendChild(bg);
+  app.appendChild(top);
+
+  
+  var mid = el('div','mid');
+  var st = el('div','status'); st.id='status';
+  mid.appendChild(st);
+  var wrap = el('div','boardwrap');
+  var cv = el('canvas'); wrap.appendChild(cv);
+  var tip = el('div','',''); tip.id='net-tip';
+  tip.style.cssText='display:none;text-align:center;color:#f0c98a;font-size:13px;font-weight:700;'
+    +'line-height:1.5;padding:5px 10px;margin:2px 8px 4px;background:rgba(200,129,60,.14);'
+    +'border:1px solid rgba(200,129,60,.32);border-radius:8px';
+  mid.appendChild(tip);
+  if(G.mode==='pvp'){ var rdy = el('button','btn pri','准备');
+    rdy.className='btn pri readybtn';
+    rdy.onclick = function(){ netToggleReady(); };
+    wrap.appendChild(rdy); }
+  mid.appendChild(wrap);
+  var sb = el('div','scorebar'); sb.id='scorebar'; sb.style.display='none';
+  mid.appendChild(sb);
+  var caps = el('div','caps'); caps.id='caps';
+  mid.appendChild(caps);
+  app.appendChild(mid);
+
+  
+  var bb = el('div','bottombar');
+  function mk(t, fn){ var b=el('button','btn',t); b.onclick=fn; return b; }
+  if(G.mode==='pve'){
+    bb.appendChild(mk('新局', function(){ confirmBox('开始新局？', function(){ startPve(); });}));
+    bb.appendChild(mk('悔棋', function(){ doUndo(); }));
+    bb.appendChild(mk('提示', function(){ doHint(); }));
+    bb.appendChild(mk('认输', function(){ confirmBox('确定认输？', function(){
+      G.state.over={result:'resign', winner:Rules.other(G.humanColor)}; updateStatus(); Board.draw(); log('I','认输');
+    });}));
+    /* 旋转：只翻显示朝向，红黑归属与 AI 执子都不变。
+       Board.xy/pick 全读 G.flip，棋盘线、楚河汉界、棋子、选中框、走法提示一起翻。 */
+    var rbtn = mk('旋转', function(){ G.flip = !G.flip; Board.draw(); log('I','旋转 flip='+G.flip); });
+    rbtn.className = 'btn q';
+    bb.appendChild(el('i','br'));
+    bb.appendChild(rbtn);
+  } else {
+    bb.appendChild(mk('认输', function(){
+      confirmBox('确定认输？', function(){
+        netSend({t:'resign'});
+        G.state.over={result:'resign', winner:Rules.other(G.netColor)};
+        updateStatus(); Board.draw();
+      });
+    }));
+    bb.appendChild(mk('悔棋', function(){ if(netSend({t:'undo'})) toast('已向对手申请悔棋'); }));
+    bb.appendChild(mk('申请执黑', function(){ if(netSend({t:'swap'})) toast('已向对手申请执黑'); }));
+  }
+  bb.appendChild(simBtnsFrag(mk));
+  app.appendChild(bb);
+  
+  Board.init(cv);
+  cv.addEventListener('click', onBoardClick);
+  try{ bindBoardTap(cv); }catch(e){ log('E','棋盘触摸绑定失败',{msg:e.message}); }
+  setTimeout(function(){ Board.resize(); Board.draw(); }, 0);
+  try{ document.body.classList.add('playing'); }catch(e){}
+}
+
+
+var _lastScorePaint = 0;
+function maybePaintScore(){
+  var n = Date.now();
+  if(n - _lastScorePaint < 400) return;
+  _lastScorePaint = n;
+  try{ updateScoreBar(); }catch(e){}
+}
+function fmtScore(mine, mate){
+  if(mate){
+    if(mine > 0) return { txt:'我绝杀', cls:'#4fd47a' };
+    if(mine < 0) return { txt:'被绝杀', cls:'#e85444' };
+    return { txt:'绝杀', cls:'#e85444' };
+  }
+  var a = Math.abs(mine|0);
+  if(a <= 50) return { txt:'势均力敌', cls:'#e8c88a' };
+  var win = mine > 0;
+  var k = Math.min(1, a/1500);
+  var cls = win ? ('hsl(142,62%,' + Math.round(40 + k*22) + '%)')
+                : ('hsl(4,74%,'  + Math.round(44 + k*20) + '%)');
+  if(a >= 2000) return { txt: win ? '我胜势' : 'AI胜势', cls:cls };
+  var word = a >= 990 ? (win ? '我大优' : 'AI大优') : (win ? '我优势' : 'AI优势');
+  return { txt: word + ' ' + a, cls:cls };
+}
+function updateScoreBar(){
+  var box = document.getElementById('scorebar');
+  if(!box) return;
+  /* 引擎加载期间：这一行直接当进度条用，不新增任何 UI */
+
+  if(G.loading){
+    box.style.display = 'flex';
+    box.innerHTML = '';
+    var ld = el('span','sc', G.loading);
+    ld.style.color = '#c98b4a';
+    box.appendChild(ld);
+    return;
+  }
+  var show = (G.mode === 'pve');   /* 计分条只给人机用：联机没有 AI 评分，靠吃子区看战绩 */
+  if(!show){ box.style.display='none'; return; }
+  box.style.display = 'flex';
+  box.innerHTML = '';
+
+  var myColor = (G.mode === 'pve') ? (G.humanColor || 'red') : (G.netColor || 'red');
+  var i = ENGINE.info || {};
+  var st = G.state;
+
+  var main = el('span','sc','评估中…');
+  main.style.color = '#8a7965';
+
+  if(i.score != null && st){
+    /* 用「本次评估时是谁在走」换算，不能用 st.turn（落子后已换边，会把优劣说反） */
+    var mover = i.side || st.turn;
+    var mine = (mover === myColor) ? i.score : -i.score;
+    var mate = null;
+    if(i.mate != null) mate = (mover === myColor) ? i.mate : -i.mate;
+    var f = fmtScore(mine, mate);
+    main.textContent = f.txt;
+    main.style.color = f.cls;
+  } else if(st && st.over){
+    var w = st.over.winner;
+    if(w){
+      if(w === myColor){ main.textContent='你赢了'; main.style.color='#4fd47a'; }
+      else { main.textContent='你输了'; main.style.color='#e85444'; }
+    } else { main.textContent='和棋'; main.style.color='#e8c88a'; }
+  }
+  box.appendChild(main);
+
+  var meta = el('span','meta','');
+  var parts = [];
+  if(i.depth) parts.push('深度 ' + i.depth);
+  if(i.hashfull) parts.push('置换表 ' + Math.round(i.hashfull/10) + '%');
+  if(parts.length) meta.textContent = parts.join(' · ');
+  box.appendChild(meta);
+
+  if(ENGINE.worker){
+    var thr = el('span','thr' + (ENGINE.variant === 'mt' ? ' mt' : ' st'),
+      ENGINE.variant === 'mt' ? ('多线程 · ' + ENGINE.threads + ' 线程') : '单线程 · 1 线程');
+    box.appendChild(thr);
+  }
+}
+
+function updateStatus(){
+  var st = document.getElementById('status'); if(!st) return;
+  var s=G.state; if(!s){ st.textContent=''; return; }
+  st.innerHTML='';
+  if(isOver(s.over)){
+    var w=s.over.winner;
+    var txt = (s.over.result==='draw80') ? '和棋（连续80步无吃子）' : (s.over.result==='drawMax') ? '和棋（200回合上限）'
+      : ('<b>'+(w==='red'?'红方':'黑方')+'胜</b> · ' + (s.over.result==='checkmate'?'将死':s.over.result==='stalemate'?'困毙':'认输'));
+    st.innerHTML = txt;
+    return;
+  }
+  var turnTxt = s.turn==='red' ? '红方走' : '黑方走';
+  var who = G.mode==='pve' ? (s.turn===G.humanColor?'（你）':'（AI思考中）') : (s.turn===G.netColor?'（你）':'（对手）');
+  var extra='';
+  if(s.over && s.over.result==='check'){
+    extra=' · <b>将军</b>';
+    if(G._lastCheckPly !== s.ply){ G._lastCheckPly = s.ply; Snd.check(); Hap.check(); }
+  }
+  var noCapTxt = s.noCap>=60 ? (' · 无吃子'+s.noCap+'/80') : '';
+  st.innerHTML = turnTxt + who + extra + noCapTxt;
+  updateCaps();
+}
+
+function updateCaps(){
+  try{ updateScoreBar(); }catch(e){}
+  var box=document.getElementById('caps'); if(!box) return;
+  box.innerHTML='';
+  var view = G.viewState || G.state; if(!view) return;
+  ['red','black'].forEach(function(col){
+    var grp=el('div','grp');
+    grp.appendChild(el('span','', col==='red'?'红失：':'黑失：'));
+    var list = view.captures.filter(function(c){ return c.owner===col; });
+    if(list.length===0){ grp.appendChild(el('span','','—')); }
+    list.forEach(function(c){
+      var cls = 'pc' + (col==='black'?' bk':'') + (c.role===null?' dk':'');
+      var sp=el('span',cls, c.role===null ? '?' : (Rules.ROLE_CN[c.role]?Rules.ROLE_CN[c.role][col]:'?'));
+      grp.appendChild(sp);
+    });
+    box.appendChild(grp);
+  });
+}
+
+/* 通用弹窗：btns = [{txt, pri, fn}]，按数组顺序从左到右排列。
+   confirmBox / askBox / infoBox 都由此派生，避免三份几乎相同的建窗代码。 */
+
+function modalBox(msg, btns){
+  var mask=el('div','mask');
+  var m=el('div','modal');
+  m.appendChild(el('h3','',msg));
+  var row=el('div','row');
+  (btns||[]).forEach(function(b){
+    var btn=el('button','btn'+(b.pri?' pri':''), b.txt);
+    btn.onclick=function(){ mask.remove(); b.fn && b.fn(); };
+    row.appendChild(btn);
+  });
+  m.appendChild(row); mask.appendChild(m);
+  document.body.appendChild(mask);
+  return mask;
+}
+
+function confirmBox(msg, fn){
+  return modalBox(msg, [
+    { txt:'取消' },
+    { txt:'确定', pri:true, fn:fn }
+  ]);
+}
+
+function askBox(msg, yesTxt, onYes, noTxt, onNo){
+  return modalBox(msg, [
+    { txt: noTxt||'取消', fn: onNo },
+    { txt: yesTxt||'确定', pri:true, fn: onYes }
+  ]);
+}
+function infoBox(msg){
+  return modalBox(msg, [ { txt:'知道了', pri:true } ]);
+}
+
+
+function feedbackMove(evt){
+  if(evt && evt.revealed){ Snd.reveal(); Hap.reveal(); return; }
+  if(evt && evt.captured){ Snd.capture(); Hap.capture(); return; }
+  Snd.move(); Hap.move();
+}
+
+function boardTapAt(px, py){
+  if(!G.state) return;
+  if(G.loading){ toast('引擎加载中，请稍候'); return; }
+  if(G.mode==='pvp' && G.phase!=='playing'){
+    if(G.oppGone) toast('对手已离场');
+    else if(!ON.on) toast('尚未进入房间');
+    else toast('双方都点「准备」后才能开始');
+    return;
+  }
+  if(isOver(G.state.over)) return;
+  var myColor = G.mode==='pve' ? G.humanColor : G.netColor;
+  if(G.state.turn !== myColor) { toast('还没到你的回合'); return; }
+  if(G.thinking) return;
+  var idx = Board.pick(px, py);
+  if(idx<0) return;
+  var p = G.state.board[idx];
+  if(G.sel!==null && G.moves.indexOf(idx)>=0){
+    var mf = G.sel;
+    doMove(mf, idx);
+    if(G.mode==='pvp') netSend({t:'move', from:mf, to:idx});
+    return;
+  }
+  if(p && p.color===myColor){
+    G.sel = idx;
+    G.moves = Rules.legalMoves(G.state, idx);
+    log('D','选中棋子', { idx:idx, uci:Rules.idxToUci(idx), moves:G.moves.length });
+    Snd.tap(); Hap.tap();
+    Board.draw();
+  } else {
+    G.sel=null; G.moves=[]; Board.draw();
+  }
+}
+function onBoardClick(ev){
+  if(!Board.cv) return;
+  /* 触摸已自行判定并消费，忽略随后合成的 click，否则同一次点按会被处理两遍
+     （走子后又把落点棋子选中） */
+  if(Board.lastTap && Date.now() - Board.lastTap < 600) return;
+  var rect = Board.cv.getBoundingClientRect();
+  boardTapAt(ev.clientX - rect.left, ev.clientY - rect.top);
+}
+/* 触摸自判定：不再依赖浏览器合成 click。
+   iOS 上合成 click 有约 300ms 延迟，且一旦 touchmove 被 preventDefault 就根本不合成
+   （此前 SwipeGuard 全屏拦截，手指横移 15px 即吞掉点击，表现为「点了不走子」）。
+   这里按下→抬起位移不超过 TAP_SLOP 即判定为点击，并即时给出按下高亮。 */
+var TAP_SLOP = 24;
+/* 按钮同样补一层触摸自判定：浏览器在手指位移超过自身容差时就不合成 click
+   （实测 dx≥22 即被吞），点按会整段丢失。这里在 touchend 后等一小会儿，
+   若浏览器确实没派发 click，再主动补一次，绝不会重复触发。 */
+(function bindTapFallback(){
+  var pend=null;
+  document.addEventListener('touchstart', function(e){
+    if(!e.touches || e.touches.length!==1){ pend=null; return; }
+    var t=e.target, el=null;
+    while(t && t!==document){ if(t.tagName==='BUTTON'){ el=t; break; } t=t.parentNode; }
+    pend = el ? { el:el, x:e.touches[0].clientX, y:e.touches[0].clientY } : null;
+  }, {passive:true, capture:true});
+  document.addEventListener('touchmove', function(e){
+    if(!pend || !e.touches || !e.touches.length) return;
+    var t=e.touches[0];
+    if(Math.abs(t.clientX-pend.x) > TAP_SLOP || Math.abs(t.clientY-pend.y) > TAP_SLOP) pend=null;
+  }, {passive:true, capture:true});
+  document.addEventListener('touchend', function(){
+    if(!pend) return;
+    var el=pend.el, fired=false;
+    pend=null;
+    var once=function(){ fired=true; };
+    el.addEventListener('click', once, {capture:true, once:true});
+    setTimeout(function(){
+      try{ el.removeEventListener('click', once, true); }catch(_){}
+      if(!fired && document.contains(el)){ try{ el.click(); }catch(_){} }
+    }, 320);
+  }, {passive:true, capture:true});
+})();
+function bindBoardTap(cv){
+  var sx=0, sy=0, down=false, moved=false;
+  function at(e){
+    var t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]) || e;
+    var r = cv.getBoundingClientRect();
+    return [t.clientX - r.left, t.clientY - r.top];
+  }
+  function onDown(e){
+    if(e.touches && e.touches.length>1) { down=false; return; }
+    var p = at(e); sx=p[0]; sy=p[1]; down=true; moved=false;
+    var idx = Board.pick(p[0], p[1]);
+    if(idx>=0 && idx!==Board.pressIdx){ Board.pressIdx=idx; Board.draw(); }
+  }
+  function onMove(e){
+    if(!down) return;
+    var p = at(e);
+    if(Math.abs(p[0]-sx) > TAP_SLOP || Math.abs(p[1]-sy) > TAP_SLOP){
+      moved = true;
+      if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); }
+    }
+  }
+  function onUp(e){
+    if(!down) return;
+    down=false;
+    var wasMoved = moved;
+    var idx = Board.pressIdx;
+    if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); }
+    if(wasMoved) return;
+    var p = at(e);
+    if(Math.abs(p[0]-sx) > TAP_SLOP || Math.abs(p[1]-sy) > TAP_SLOP) return;
+    Board.lastTap = Date.now();
+    boardTapAt(p[0], p[1]);
+  }
+  cv.addEventListener('touchstart', onDown, {passive:true});
+  cv.addEventListener('touchmove', onMove, {passive:true});
+  cv.addEventListener('touchend', onUp, {passive:true});
+  cv.addEventListener('touchcancel', function(){ down=false; if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); } }, {passive:true});
+  if(window.PointerEvent){
+    cv.addEventListener('pointerdown', function(e){ if(e.pointerType==='mouse'){ onDown(e); } }, {passive:true});
+    cv.addEventListener('pointerup', function(e){ if(e.pointerType==='mouse'){ onUp(e); } }, {passive:true});
+  }
+}
+
+function doMove(from, to){
+  var legal = Rules.legalMoves(G.state, from);
+  if(legal.indexOf(to)<0){ log('W','非法走法被拒绝',{from:from,to:to}); toast('非法走法'); return; }
+  G.history.push(Rules.clone(G.state));
+  var res = Rules.applyMove(G.state, from, to);
+  G.state = res.state;
+  G.sel=null; G.moves=[];
+  G.viewState = Rules.viewFor(G.state, G.humanColor);
+  log('I','玩家走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), from:from, to:to,
+    revealed:res.evt.revealed, captured:res.evt.captured });
+  feedbackMove(res.evt);
+  Board.draw(); updateStatus();
+  if(isGameOver()) return;
+  if(G.mode==='pve') setTimeout(aiTurn, 260);
+}
+
+
+function isOver(o){
+  return !!o && (o.result==='checkmate'||o.result==='stalemate'||o.result==='draw80'||o.result==='drawMax'||o.result==='resign');
+}
+function isGameOver(){
+  var o=G.state.over; if(!o) return false;
+  if(isOver(o)){
+    log('I','对局结束', o);
+    setTimeout(function(){ showResult(o); }, 200);
+    return true;
+  }
+  return false;
+}
+function showResult(o){
+  var txt = (o.result==='draw80') ? '和棋（连续80步无吃子）'
+    : (o.result==='drawMax') ? '和棋（达到200回合上限）'
+    : (o.winner==='red'?'红方胜':'黑方胜') + '（' + (o.result==='checkmate'?'将死':o.result==='stalemate'?'困毙':'认输') + '）';
+  var mine = G.mode==='pve' ? G.humanColor : G.netColor;
+  var note='';
+  if(o.winner){ note = (o.winner===mine) ? ' 你赢了' : ' 你输了'; }
+  if(!o.winner){ Snd.draw(); Hap.tap(); }
+  else if(o.winner===mine){ Snd.win(); Hap.win(); }
+  else { Snd.lose(); Hap.lose(); }
+  if(G.mode==='pvp'){
+    infoBox(txt + note + '\n重新开始请退出房间再进');
+    return;
+  }
+  confirmBox(txt + note, function(){
+    G.state=Rules.newGame(); G.sel=null; G.moves=[]; G.ponder=null; G.history=[];
+    G.viewState=Rules.viewFor(G.state,G.humanColor);
+    Board.draw(); updateStatus();
+    if(G.aiColor==='red') setTimeout(aiTurn,300);
+  });
+}
+
+function doUndo(){
+  if(G.mode!=='pve'||!G.state){ return; }
+  if(G.thinking){ toast('AI 正在思考，请稍候'); return; }
+  if(!G.history.length){ toast('没有可悔的棋'); return; }
+  // 回退到"轮到我走"的最近一个局面（撤销 AI 一步 + 自己一步）
+  var target=null;
+  while(G.history.length){
+    var h=G.history.pop();
+    if(h.turn===G.humanColor){ target=h; break; }
+  }
+  if(!target){ toast('没有可悔的棋'); return; }
+  ENGINE.stop();
+  G.state=target; G.sel=null; G.moves=[]; G.ponder=null;
+  G.viewState=Rules.viewFor(G.state,G.humanColor);
+  log('I','悔棋', { backToPly:G.state.ply });
+  Snd.undo(); Hap.undo();
+  Board.draw(); updateStatus(); toast('已悔棋');
+}
+
+function doHint(){
+  if(G.mode!=='pve') return;
+  if(G.state.turn!==G.humanColor){ toast('等AI走完'); return; }
+  G.thinking=true; updateStatus();
+  var fen = Rules.toFen(G.state, G.humanColor);
+  ENGINE.search(fen, { movetime:1500 }).then(function(r){
+    G.thinking=false;
+    if(r.best){
+      var from=Rules.uciToIdx(r.best.slice(0,2)), to=Rules.uciToIdx(r.best.slice(2,4));
+      if(from>=0&&to>=0){
+        G.sel=from; G.moves=Rules.legalMoves(G.state,from);
+        Board.draw();
+        toast('建议：'+Rules.idxToUci(from)+'→'+Rules.idxToUci(to), 2500);
+        log('I','AI提示', { best:r.best });
+      }
+    } else toast('引擎未给出建议');
+    updateStatus();
+  }).catch(function(e){ G.thinking=false; log('E','提示失败',{msg:e.message}); toast('提示失败'); updateStatus(); });
+}
+
+async function startPve(){
+  clearApp();
+  G.mode='pve';
+  G.humanColor = G.humanColor||'red';
+  G.aiColor = Rules.other(G.humanColor);
+  G.flip = (G.humanColor==='black');
+  G.state = Rules.newGame();
+  G.sel=null; G.moves=[]; G.thinking=false; G.ponder=null;
+  G.history=[]; G.viewState=Rules.viewFor(G.state, G.humanColor);
+  G.loading='准备中…';
+  renderGame();
+  Board.resize(); Board.draw();
+  updateStatus();
+  var t0 = Date.now();
+  function loadMsg(txt){
+    pveLoading(txt + ' · 已用时 ' + ((Date.now()-t0)/1000).toFixed(0) + ' 秒');
+  }
+  try{
+    await ENGINE.preload(loadMsg);
+    G.loading = null;
+    log('I','开始人机对局', { level:G.level, human:G.humanColor, engineSource:ENGINE.sourceLabel, fromCache:ENGINE.fromCache });
+    updateStatus();
+    if(G.aiColor==='red') setTimeout(aiTurn, 350);
+  }catch(e){
+    G.loading = null;
+    try{ updateScoreBar(); }catch(e2){}
+    log('E','启动人机失败',{msg:e.message});
+    if(ENGINE.simdBlocked) return;   /* 已弹过 SIMD 专属提示，不再套一层"加载失败" */
+    /* 左「返回」右「重试」：askBox 的按钮顺序就是 [noTxt, yesTxt]，直接复用即可 */
+
+    askBox('引擎加载失败：' + e.message + '\n已用时 ' + ((Date.now()-t0)/1000).toFixed(1) + ' 秒',
+      '重试', function(){
+        ENGINE.ready=null; ENGINE.worker=null; ENGINE.lastError=null; startPve();
+      }, '返回', renderHome);
+  }
+}
+
+
+
+
+async function aiTurn(){
+  if(G.mode!=='pve'||!G.state) return;
+  if(G.state.turn!==G.aiColor) return;
+  if(isOver(G.state.over)) return;
+  G.thinking=true; updateStatus();
+  var lv = LEVELS[G.level];
+  if(ENGINE.hashFor !== G.level){
+    /* 取「难度档位」与「线程建议值」的较大者。
+       多线程共享一张置换表，表太小会让线程互相抢表、深度反降；
+       不能因为换难度就把已按线程数调大的 Hash 又调小。 */
+
+    await ENGINE.setHash(Math.max(HASH_OF(G.level), ENGINE.suggestedHash()));
+    ENGINE.hashFor = G.level;
+  }
+  var fen = Rules.toFen(G.state, G.aiColor);
+  log('I','AI思考', { fen:fen, level:G.level, opt: (lv.depth?('depth '+lv.depth):('movetime '+lv.movetime)) });
+
+  var usedPonder=false;
+  if(G.ponder && G.ponder.fen === fen){
+    
+    usedPonder=true;
+    log('I','后台思考命中', { fen:fen });
+  } else if(G.ponder){
+    log('I','后台思考未命中，停止', { ponderFen:G.ponder.fen, nowFen:fen });
+    ENGINE.stop();
+    G.ponder=null;
+  }
+
+  var r;
+  try{
+    if(usedPonder){
+      r = await G.ponder.promise;
+      G.ponder=null;
+    } else {
+      r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
+    }
+  }catch(e){ log('E','AI搜索异常',{msg:e.message}); r=null; }
+
+  G.thinking=false;
+  /* 解析 + 非法兜底走公共函数（与机器人两条链路同一套逻辑） */
+
+  var mv = pickEngineMove(G.state, G.aiColor, r && r.best);
+  if(!mv){ updateStatus(); return; }
+  if(!r || !r.best) log('W','引擎无结果，使用兜底走法', { mv:mv });
+  else if(mv.fallback) log('W','引擎走法非法，兜底', { best:r.best });
+  applyAi(mv.from, mv.to, mv.fallback);
+}
+
+function applyAi(from, to, fallback){
+  G.history.push(Rules.clone(G.state));
+  var res=Rules.applyMove(G.state, from, to);
+  G.state=res.state;
+  G.viewState=Rules.viewFor(G.state,G.humanColor);
+  log('I','AI走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), revealed:res.evt.revealed,
+    captured:res.evt.captured, fallback:fallback });
+  feedbackMove(res.evt);
+  Board.draw(); updateStatus();
+  if(isGameOver()) return;
+  
+  if(LEVELS[G.level].ponder && !G.state.over){
+    startPonder();
+  }
+}
+
+async function startPonder(){
+  try{
+    var lv=LEVELS[G.level];
+    
+    var fenNow = Rules.toFen(G.state, G.humanColor);
+    var pr = await ENGINE.search(fenNow, { movetime:400 });
+    if(!pr || !pr.best){ return; }
+    var f=Rules.uciToIdx(pr.best.slice(0,2)), t=Rules.uciToIdx(pr.best.slice(2,4));
+    var legal=Rules.legalMoves(G.state, f);
+    if(f<0||t<0||legal.indexOf(t)<0) return;
+    var after = Rules.applyMove(G.state, f, t).state;
+    var fenP = Rules.toFen(after, G.aiColor);
+    log('I','启动后台思考', { predict:pr.best, fen:fenP });
+    var p = ENGINE.search(fenP, { movetime: lv.movetime });
+    G.ponder = { fen:fenP, promise:p };
+    
+    p.then(function(){ if(G.ponder && G.ponder.promise===p){  } }).catch(function(){});
+  }catch(e){ log('W','后台思考启动失败',{msg:e.message}); }
+}
+
+
+
+function applyAi(from, to, fallback){
+  G.history.push(Rules.clone(G.state));
+  var res=Rules.applyMove(G.state, from, to);
+  G.state=res.state;
+  G.viewState=Rules.viewFor(G.state,G.humanColor);
+  log('I','AI走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), revealed:res.evt.revealed,
+    captured:res.evt.captured, fallback:fallback });
+  feedbackMove(res.evt);
+  Board.draw(); updateStatus();
+  if(isGameOver()) return;
+  
+  if(LEVELS[G.level].ponder && !G.state.over){
+    startPonder();
+  }
+}
+
+
+async function startPonder(){
+  try{
+    var lv=LEVELS[G.level];
+    
+    var fenNow = Rules.toFen(G.state, G.humanColor);
+    var pr = await ENGINE.search(fenNow, { movetime:400 });
+    if(!pr || !pr.best){ return; }
+    var f=Rules.uciToIdx(pr.best.slice(0,2)), t=Rules.uciToIdx(pr.best.slice(2,4));
+    var legal=Rules.legalMoves(G.state, f);
+    if(f<0||t<0||legal.indexOf(t)<0) return;
+    var after = Rules.applyMove(G.state, f, t).state;
+    var fenP = Rules.toFen(after, G.aiColor);
+    log('I','启动后台思考', { predict:pr.best, fen:fenP });
+    var p = ENGINE.search(fenP, { movetime: lv.movetime });
+    G.ponder = { fen:fenP, promise:p };
+    
+    p.then(function(){ if(G.ponder && G.ponder.promise===p){  } }).catch(function(){});
+  }catch(e){ log('W','后台思考启动失败',{msg:e.message}); }
+}
+
+
+window.UI = UI;
+/* 调试出口：诊断日志可直接读它，真机排查时也能在控制台看内部状态 */
+window.__JQ = { G:G, ENGINE:ENGINE, Rules:Rules, Board:Board, LEVELS:LEVELS, ST:ST, Snd:Snd, Hap:Hap,
+  doMove:doMove, doUndo:doUndo, doHint:doHint, aiTurn:aiTurn, renderPveSetup:renderPveSetup, showMenu:showMenu };
+UI.init();
+})();
+</script>
+</body>
+</html>
