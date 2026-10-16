@@ -507,7 +507,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = 'v1.5.0';
+const JIEQI_VER = '0.0.0';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -4115,27 +4115,21 @@ async function aiTurn(){
   var fen = Rules.toFen(G.state, G.aiColor);
   log('I','AI思考', { fen:fen, level:G.level, opt: (lv.depth?('depth '+lv.depth):('movetime '+lv.movetime)) });
 
-  var usedPonder=false;
-  if(G.ponder && G.ponder.fen === fen){
-    /* 命中：让后台尽快收尾交结果。多线程 stop 实测 1ms 生效；
-       单线程 wasm 同步搜索 stop 无效，靠分片每段结束的检查点接管 */
-    G.ponder.stop=true; ENGINE.stop();
-    usedPonder=true;
-    log('I','后台思考命中', { fen:fen });
-  } else if(G.ponder){
-    log('I','后台思考未命中，停止', { ponderFen:G.ponder.fen, nowFen:fen });
-    G.ponder.stop=true; ENGINE.stop();
-    G.ponder=null;
+  var usedPonder=false, oldP=null, pr=null;
+  if(G.ponder){
+    oldP=G.ponder; G.ponder=null;
+    if(oldP.fen === fen){ usedPonder=true; log('I','后台思考命中', { fen:fen }); }
+    else log('I','后台思考未命中，停止', { ponderFen:oldP.fen, nowFen:fen });
+    oldP.stop=true; ENGINE.stop();
+    /* 关键：必须等旧搜索真正退出再发新搜索。
+       mt 下若不等，新搜索会排在旧搜索后面排队，实测未命中卡 45 秒 */
+    try{ pr = await oldP.promise; }catch(e){ pr=null; }
   }
 
   var r;
   try{
-    if(usedPonder){
-      r = await G.ponder.promise;
-      G.ponder=null;
-    } else {
-      r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
-    }
+    if(usedPonder) r = pr;
+    else r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
   }catch(e){ log('E','AI搜索异常',{msg:e.message}); r=null; }
 
   G.thinking=false;
@@ -4190,7 +4184,7 @@ async function startPonder(){
     log('I','启动后台思考', { predict:pm, fen:fenP });
     var h = { fen:fenP, stop:false };
     G.ponder = h;
-    h.promise = (ENGINE.variant==='st') ? ponderSeg(fenP, h) : ENGINE.search(fenP, { depth:40 });
+    h.promise = ponderSeg(fenP, h);
   }catch(e){ log('W','后台思考启动失败',{msg:e.message}); }
 }
 /* 单核分片后台思考：每段 3 秒，段间检查「你已走子」或「够深了」 */
