@@ -1,13 +1,31 @@
-/* 五子棋 · Service Worker（离线支持）
+/* 五子棋 · Service Worker（离线支持 + 跨源隔离）
    策略：
    - 页面/同源资源：network-first（优先取最新，断网回落缓存）
    - 引擎/组件等跨域资源：cache-first（下一次起永久秒开）
    - 带 ?_cb= 的请求不缓存（删除引擎功能靠它做真下载测试）
+   - 文档响应注入 COOP/COEP：让 SharedArrayBuffer 可用（多线程引擎前提）
 */
 var CACHE = 'gomoku-v1'; // 固定名：以后更新 HTML 不用再传本文件
 var CACHE_PREFIX = 'gomoku-'; // 旧缓存按此前缀清理
 var PRECACHE = ['./wuziqi.html', './manifest.json'];
 var ASSET_HOSTS = ['jsdelivr.net', 'githubusercontent.com', 'github.com'];
+
+/* 跨源隔离：GitHub Pages 无法自定义响应头，只能由 SW 注入。
+   生效条件是"文档加载那一刻就带这些头"，所以首次访问需要 reload 一次。 */
+function withCoi(res) {
+  try {
+    var h = new Headers(res.headers);
+    h.set('Cross-Origin-Opener-Policy', 'same-origin');
+    h.set('Cross-Origin-Embedder-Policy', 'require-corp');
+    return new Response(res.body, {
+      status: res.status,
+      statusText: res.statusText,
+      headers: h
+    });
+  } catch (e) {
+    return res;
+  }
+}
 
 self.addEventListener('install', function (e) {
   e.waitUntil(
@@ -42,11 +60,30 @@ function store(req, res) {
   } catch (e) {}
 }
 
+// 导航/同源：网络优先 + 断网回落缓存；文档响应额外注入隔离头
+function handleDoc(req) {
+  return fetch(req).then(function (res) {
+    if (cacheable(res)) store(req, res);
+    return withCoi(res);
+  }).catch(function () {
+    return caches.match(req).then(function (hit) {
+      var r = hit || caches.match('./wuziqi.html');
+      return r ? withCoi(r) : r;
+    });
+  });
+}
+
 self.addEventListener('fetch', function (e) {
   var req = e.request;
   if (req.method !== 'GET') return;
   var url;
   try { url = new URL(req.url); } catch (err) { return; }
+
+  // 文档请求：注入 COOP/COEP（多线程引擎需要 SharedArrayBuffer）
+  if (req.mode === 'navigate' || req.destination === 'document') {
+    e.respondWith(handleDoc(req));
+    return;
+  }
 
   // 跨域静态资源（引擎 rapfi / 联机组件 peerjs / 更新正文）：缓存优先
   var isAsset = false;
@@ -67,16 +104,14 @@ self.addEventListener('fetch', function (e) {
     return;
   }
 
-  // 导航请求 / 同源资源：网络优先，断网回落
-  if (req.mode === 'navigate' || url.origin === self.location.origin) {
+  // 同源非文档资源：网络优先，断网回落
+  if (url.origin === self.location.origin) {
     e.respondWith(
       fetch(req).then(function (res) {
         if (cacheable(res)) store(req, res);
         return res;
       }).catch(function () {
-        return caches.match(req).then(function (hit) {
-          return hit || caches.match('./wuziqi.html');
-        });
+        return caches.match(req);
       })
     );
   }
