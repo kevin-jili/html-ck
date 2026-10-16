@@ -293,7 +293,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
    刻意不做右上角 ✕——框外上下都留 130px+ 可点区域，点遮罩即关，省一套关闭按钮代码。 */
 .logbox{width:min(86vw,340px);height:min(86vw,340px);flex:0 0 auto;background:#231b14;
   border:1px solid #55432f;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
-.logbox .tip{font-size:12px;color:#9d8a6c;line-height:1.4;flex:0 0 auto}
+.logbox .tip,.editbox .tip{font-size:12px;color:#9d8a6c;line-height:1.4;text-align:center;flex:0 0 auto}
 /* readonly 而非 disabled：可选中、可全选、可滚动，且 iOS 上不会弹键盘 */
 .logbox textarea{flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;resize:none;
   background:#14100b;color:#c9b58a;border:1px solid #3a2e22;border-radius:8px;padding:8px;
@@ -302,6 +302,25 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .logbox .row{display:flex;gap:8px;flex:0 0 auto}
 .logbox .row button{flex:1 1 0;padding:10px 0;font-size:14px;font-weight:700;color:#ffe9c2;
   background:#2c2318;border:1px solid #55432f;border-radius:10px}
+
+/* 改子弹窗：双击人机棋盘上的子弹出。第一行 6 个棋子图标直接复用 Board.drawPiece，
+   第二行红/黑互斥开关（文字前小亮点：亮=开启，灭=关闭）。 */
+.editbox{width:min(90vw,340px);flex:0 0 auto;background:#231b14;border:1px solid #55432f;
+  border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+
+.edrow{display:flex;gap:6px}
+.pbtn{flex:1;min-width:0;background:linear-gradient(180deg,#2f2619,#282015);border:1px solid #4d3c28;
+  border-radius:10px;padding:5px 0;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pbtn canvas{display:block}
+.pbtn:active{transform:scale(.94)}
+.swrow{display:flex;gap:8px}
+.swbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 0;
+  border-radius:10px;background:#2c2318;border:1px solid #4d3c28;color:#f2e8da;font-size:14px;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.swbtn .led{width:9px;height:9px;border-radius:50%;background:#4a4034;flex:0 0 auto}
+.swbtn.on{border-color:#e8b872;box-shadow:0 0 0 2px rgba(232,184,114,.35)}   /* 选中方醒目边框 */
+.swbtn.on .led{background:#ffd06a;box-shadow:0 0 6px rgba(255,208,106,.85)}
 .btn:active{background:#55432f}
 canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touch-action:manipulation}
 .page{width:100%;max-width:none}
@@ -311,6 +330,90 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 .btn.pri{font-size:15px}
 .opt .t{font-weight:600} .boardwrap{position:relative} .readybtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;flex:0 0 auto;min-width:112px;padding:10px 18px;font-size:16px} .readybtn.on{background:#4b3a22;color:#c9b28a} .mput{width:100%;box-sizing:border-box;padding:9px 10px;background:#14100b;border:1px solid #55432f;border-radius:8px;color:#ffe9c2;font-size:15px;font-family:inherit;margin:2px 0 6px;outline:none} #toast.err{left:50%;top:46%;transform:translate(-50%,-50%);background:rgba(120,20,20,.94);color:#ff8b8b;border:1px solid #ff6b6b;font-size:16px;font-weight:700;padding:12px 20px} .row2{display:flex;gap:8px;margin:6px 0 2px} .row2>.btn{flex:1;min-width:0} .hint{font-size:12px;color:#8d7a63;line-height:1.6;margin:4px 2px}
 </style>
+
+<!-- 启用跨源隔离（COOP/COEP），让 WebAssembly 多线程生效。
+     GitHub Pages 无法自行设置响应头，故用 Service Worker 注入。
+     注册代码内联：必须同步且先于主程序执行，否则主程序会先按单线程把引擎下载一遍，
+     SW 再 reload 时又要重新下载多线程版，白白浪费一次流量。
+     ./coi-sw.js 仍需保留在服务器上（浏览器要 fetch 它作为 SW 脚本）。
+
+     各内核支持差异很大，按顺序逐个尝试、失败自动换下一个：
+       require-corp   —— Chrome / Edge / Firefox 均支持（首选）
+       credentialless —— 仅 Chrome / Edge；Firefox 会静默忽略该值（实测隔离不生效）
+     Safari / 老内核两者都不支持时自动放弃，退回单线程，不影响使用。 -->
+<script>
+(function(){
+  var KT='jieqi-coi-tried', KM='jieqi-coi-mode', KV='jieqi-coi-ver';
+  var VER='3';                                   /* 版本号变更时清空旧尝试记录，避免脏状态卡死 */
+
+  var ORDER=['require-corp','credentialless'];
+  function get(k){ try{ return sessionStorage.getItem(k); }catch(e){ return null; } }
+  function set(k,v){ try{ sessionStorage.setItem(k,v); }catch(e){} }
+  var RC='jieqi-coi-reloads', RMAX=4;              
+  try{ if(get(KV)!==VER){ sessionStorage.removeItem(KT); sessionStorage.removeItem(KM); sessionStorage.removeItem(RC); set(KV,VER); } }catch(e){}
+  function triedList(){ var t=[]; try{ t=JSON.parse(get(KT)||'[]'); }catch(e){ t=[]; } return Array.isArray(t)?t:[]; }
+  function markTried(m){ var t=triedList(); if(t.indexOf(m)<0){ t.push(m); set(KT, JSON.stringify(t)); } }
+  function nextMode(){ var t=triedList(); for(var i=0;i<ORDER.length;i++){ if(t.indexOf(ORDER[i])<0) return ORDER[i]; } return null; }
+
+  try{
+    if(window.crossOriginIsolated===true) return;          
+    if(!('serviceWorker' in navigator) || !navigator.serviceWorker) return;
+    if(!window.isSecureContext) return;                    
+
+    /* 页面级校验，但有个关键前提：
+       SW 需要「两次 reload」才生效 —— 第一次注册安装，第二次才真正接管并注入响应头。
+       早期版本在第二次访问时 SW 尚未接管就把它判成失败，直接跳到下一个模式；
+       而 Firefox 不支持 credentialless，于是彻底没戏，退回单线程。
+       修法：只有当 SW 确实已接管（controller 存在）却仍未隔离，才判定该模式失败。 */
+
+    var prev=get(KM);
+    var hasController = !!navigator.serviceWorker.controller;
+    if(prev && hasController){ markTried(prev); }
+    
+
+    var mode=nextMode();
+
+    /* 页面 URL 上带 ?coi=require-corp 或 ?coi=credentialless 时强制指定模式。
+       用途：某些内核在 require-corp 下动态创建的 pthread 子 Worker 会卡死，
+       用 credentialless 反而正常。方便手动对比、定位问题。 */
+
+    try{
+      var qm = /(?:^|[?&])coi=([^&]*)/.exec(location.search);
+      if(qm && qm[1]){
+        var forced = decodeURIComponent(qm[1]);
+        if(ORDER.indexOf(forced) >= 0){
+          mode = forced;
+          set(KM, mode);
+          var t2 = triedList().filter(function(x){ return x !== mode; });
+          set(KT, JSON.stringify(t2));
+        }
+      }
+    }catch(e){}
+
+    if(!mode){ set(KM,''); return; }                       
+    set(KM, mode);
+    set('jieqi-coi-ctrl', hasController ? '1' : '0');
+    set('jieqi-coi-reg',  '1');
+
+    navigator.serviceWorker.register('./coi-sw.js?coi='+encodeURIComponent(mode), {scope:'./'})
+      .then(function(){ doReload(); })
+      .catch(function(){});
+
+    /* 无论当前有无 controller，都必须 reload 一次：
+       新 SW 不会重新拉取已加载的文档头，只有下次导航才会带上 COOP/COEP。
+       用「次数上限」而非「时间间隔」防跑飞——本地页面刷新可能只要 200ms，
+       时间防抖会误杀必要的那一次跳转。 */
+
+    function doReload(){
+      var used=0; try{ used=parseInt(get(RC)||'0',10); }catch(e){}
+      if(!isFinite(used)) used=0;
+      if(used >= RMAX) return;
+      set(RC, String(used+1));
+      setTimeout(function(){ window.location.reload(); }, 60);
+    }
+  }catch(e){}
+})();
+</script>
 </head>
 <body>
 <div id="stage">
@@ -1882,7 +1985,7 @@ var LEVELS = {
   normal:    { name:'普通',     movetime:300, desc:'限时 0.3 秒',            hash:32  },
   hard:      { name:'困难',     movetime:1000, desc:'限时 1 秒',             hash:64  },
   nightmare: { name:'噩梦',     movetime:4000, desc:'限时 4 秒',             hash:96  },
-  peak:      { name:'巅峰棋圣', movetime:5000, desc:'限时 5 秒 + 后台思考',  hash:128, ponder:true }
+  peak:      { name:'巅峰棋圣', movetime:5000, desc:'限时 5 秒 + 后台思考',  hash:256, ponder:true }
 };
 function HASH_OF(lv){ return (LEVELS[lv] && LEVELS[lv].hash) || 32; }
 var G = {
@@ -2252,7 +2355,7 @@ var Rules = (function(){
 })();
 
 var Board = {
-  cv:null, ctx:null, cell:0, pad:0, W:0, H:0, pressIdx:-1, lastTap:0,
+  cv:null, ctx:null, cell:0, pad:0, W:0, H:0, pressIdx:-1, lastTap:0, lastEditIdx:-1, lastEditT:0,
   init(cv){ this.cv=cv; this.ctx=cv.getContext('2d'); },
   resize(){
     var wrap = this.cv.parentNode;
@@ -3230,10 +3333,14 @@ var ENGINE = {
     this.send(opt.movetime ? ('go movetime '+Math.round(opt.movetime)) : ('go depth '+(opt.depth||1)));
     var line=await p;
     this.searching=false;
-    if(line){ var parts=line.split(/\s+/); best=(parts[1]&&parts[1]!=='(none)')?parts[1]:null; }
+    var pm=null;
+    if(line){ var parts=line.split(/\s+/); best=(parts[1]&&parts[1]!=='(none)')?parts[1]:null;
+      /* 引擎 bestmove 行末的 ponder 是「它预测你会走的那步」，深搜免费附带，白拿不花钱 */
+      pm=(parts[2]==='ponder'&&parts[3])?parts[3]:null; }
     var inf = this.info || {};
     return { best:best, ok:(this.token===my && !!best), aborted:(this.token!==my),
-             score:(inf.score==null?null:inf.score), mate:(inf.mate==null?null:inf.mate), side:this.infoSide };
+             score:(inf.score==null?null:inf.score), mate:(inf.mate==null?null:inf.mate), side:this.infoSide,
+             ponder:pm };
   }
 };
 
@@ -3654,6 +3761,9 @@ function feedbackMove(evt){
   Snd.move(); Hap.move();
 }
 
+/* 双击改子：仅人机模式。兵种按钮复用 Board.drawPiece 画到小 canvas 上，
+   与棋盘上的棋子外观完全一致；红/黑互斥，当前所属方亮灯且不可点。将/帅不可改。 */
+var EDIT_ROLES = ['chariot','horse','cannon','elephant','advisor','soldier'];
 function boardTapAt(px, py){
   if(!G.state) return;
   if(G.loading){ toast('引擎加载中，请稍候'); return; }
@@ -3675,6 +3785,16 @@ function boardTapAt(px, py){
     doMove(mf, idx);
     if(G.mode==='pvp') netSend({t:'move', from:mf, to:idx});
     return;
+  }
+  /* 双击改子：仅人机模式。放在走子判断之后，避免把「双击落点走子」误判成改子 */
+  if(G.mode==='pve'){
+    var now = Date.now();
+    if(idx === Board.lastEditIdx && now - Board.lastEditT < 350){
+      Board.lastEditIdx = -1; Board.lastEditT = 0;
+      openPieceEditor(idx);
+      return;
+    }
+    Board.lastEditIdx = idx; Board.lastEditT = now;
   }
   if(p && p.color===myColor){
     G.sel = idx;
@@ -3770,6 +3890,84 @@ function bindBoardTap(cv){
   }
 }
 
+/* ===== 改子：人机模式下双击棋子（或空格）弹出 ===== */
+var EDIT_ROLES = ['chariot','horse','cannon','elephant','advisor','soldier'];
+function drawPieceIcon(cv, p, size){
+  var dpr = window.devicePixelRatio||1;
+  cv.width=Math.round(size*dpr); cv.height=Math.round(size*dpr);
+  cv.style.width=size+'px'; cv.style.height=size+'px';
+  var cx=cv.getContext('2d');
+  cx.setTransform(dpr,0,0,dpr,0,0);
+  /* 直接复用棋盘棋子的绘制代码：只把坐标函数换成「永远居中」，不改动 Board 自身状态 */
+  Board.drawPiece.call({ ctx:cx, cell:size, xy:function(){ return [size/2, size/2]; } }, 0, p);
+}
+function openPieceEditor(idx){
+  if(G.mode!=='pve' || !G.state) return;
+  var p = G.state.board[idx];
+  if(p && p.role==='general'){ toast('将（帅）不能修改'); return; }
+  var color = p ? p.color : G.humanColor;
+  var old = document.querySelector('.editbox');
+  if(old && old.parentNode) old.parentNode.remove();      /* 连开时先收掉上一个，避免遮罩叠加 */
+  var host = document.getElementById('stage') || document.body;
+  var mask = el('div','mask');
+  var box = el('div','editbox');
+  box.appendChild(el('div','tip', (p?'修改此子 · ':'新增棋子 · ') + Rules.idxToUci(idx)));
+  var r1 = el('div','edrow'), btns=[];
+  EDIT_ROLES.forEach(function(role){
+    var btn = el('button','pbtn');
+    var cv = document.createElement('canvas');
+    btn.appendChild(cv);
+    btn.setAttribute('data-role', role);
+    btns.push(btn); r1.appendChild(btn);
+  });
+  box.appendChild(r1);
+  var r2 = el('div','swrow'), sw={};
+  ['red','black'].forEach(function(c){
+    var btn = el('button','swbtn');
+    btn.appendChild(el('i','led'));
+    btn.appendChild(el('span','', c==='red'?'红':'黑'));
+    sw[c]=btn; r2.appendChild(btn);
+  });
+  box.appendChild(r2);
+  box.appendChild(el('div','tip','点棋子即生效，可连改多个；点框外关闭'));
+  mask.appendChild(box);
+  host.appendChild(mask);
+  function setColor(c){
+    color = c;
+    ['red','black'].forEach(function(k){
+      var on = (k===color);
+      sw[k].classList.toggle('on', on);   /* 灯亮 + 醒目边框 */
+      sw[k].disabled = on;                /* 当前所属方不可再点，点另一方才切换 */
+    });
+    btns.forEach(function(btn){
+      drawPieceIcon(btn.querySelector('canvas'), { color:color, role:btn.getAttribute('data-role'), faceDown:false }, 38);
+    });
+  }
+  ['red','black'].forEach(function(c){
+    sw[c].addEventListener('click', function(e){
+      e.stopPropagation();
+      if(c===color) return;
+      setColor(c); Snd.tap(); Hap.tap();
+    });
+  });
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      applyEdit(idx, color, btn.getAttribute('data-role'));
+      Snd.tap(); Hap.tap();
+    });
+  });
+  mask.addEventListener('click', function(e){ if(e.target===mask) mask.remove(); });
+  setColor(color);
+}
+function applyEdit(idx, color, role){
+  G.history.push(Rules.clone(G.state));                    /* 存档，改坏了可悔棋 */
+  G.state.board[idx] = { color:color, role:role, faceDown:false };
+  G.sel=null; G.moves=[];
+  G.viewState = Rules.viewFor(G.state, G.humanColor);
+  Board.draw(); updateStatus();
+  log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role });
+}
 function doMove(from, to){
   var legal = Rules.legalMoves(G.state, from);
   if(legal.indexOf(to)<0){ log('W','非法走法被拒绝',{from:from,to:to}); toast('非法走法'); return; }
@@ -3919,12 +4117,14 @@ async function aiTurn(){
 
   var usedPonder=false;
   if(G.ponder && G.ponder.fen === fen){
-    
+    /* 命中：让后台尽快收尾交结果。多线程 stop 实测 1ms 生效；
+       单线程 wasm 同步搜索 stop 无效，靠分片每段结束的检查点接管 */
+    G.ponder.stop=true; ENGINE.stop();
     usedPonder=true;
     log('I','后台思考命中', { fen:fen });
   } else if(G.ponder){
     log('I','后台思考未命中，停止', { ponderFen:G.ponder.fen, nowFen:fen });
-    ENGINE.stop();
+    G.ponder.stop=true; ENGINE.stop();
     G.ponder=null;
   }
 
@@ -3945,6 +4145,7 @@ async function aiTurn(){
   if(!mv){ updateStatus(); return; }
   if(!r || !r.best) log('W','引擎无结果，使用兜底走法', { mv:mv });
   else if(mv.fallback) log('W','引擎走法非法，兜底', { best:r.best });
+  G.lastPonder = (r && r.ponder) || null;
   applyAi(mv.from, mv.to, mv.fallback);
 }
 
@@ -3959,68 +4160,48 @@ function applyAi(from, to, fallback){
   Board.draw(); updateStatus();
   if(isGameOver()) return;
   
-  if(LEVELS[G.level].ponder && !G.state.over){
-    startPonder();
-  }
-}
-
-async function startPonder(){
-  try{
-    var lv=LEVELS[G.level];
-    
-    var fenNow = Rules.toFen(G.state, G.humanColor);
-    var pr = await ENGINE.search(fenNow, { movetime:400 });
-    if(!pr || !pr.best){ return; }
-    var f=Rules.uciToIdx(pr.best.slice(0,2)), t=Rules.uciToIdx(pr.best.slice(2,4));
-    var legal=Rules.legalMoves(G.state, f);
-    if(f<0||t<0||legal.indexOf(t)<0) return;
-    var after = Rules.applyMove(G.state, f, t).state;
-    var fenP = Rules.toFen(after, G.aiColor);
-    log('I','启动后台思考', { predict:pr.best, fen:fenP });
-    var p = ENGINE.search(fenP, { movetime: lv.movetime });
-    G.ponder = { fen:fenP, promise:p };
-    
-    p.then(function(){ if(G.ponder && G.ponder.promise===p){  } }).catch(function(){});
-  }catch(e){ log('W','后台思考启动失败',{msg:e.message}); }
-}
-
-
-
-function applyAi(from, to, fallback){
-  G.history.push(Rules.clone(G.state));
-  var res=Rules.applyMove(G.state, from, to);
-  G.state=res.state;
-  G.viewState=Rules.viewFor(G.state,G.humanColor);
-  log('I','AI走子', { uci:Rules.idxToUci(from)+Rules.idxToUci(to), revealed:res.evt.revealed,
-    captured:res.evt.captured, fallback:fallback });
-  feedbackMove(res.evt);
-  Board.draw(); updateStatus();
-  if(isGameOver()) return;
-  
-  if(LEVELS[G.level].ponder && !G.state.over){
+  /* 注意：G.state.over 恒为对象（{result:null,winner:null}），直接取反永远是 false，
+     后台思考会永远启动不了 —— 必须用 isOver() 判断 */
+  if(LEVELS[G.level].ponder && !isOver(G.state.over)){
     startPonder();
   }
 }
 
 
+/* 后台思考：把你思考的时间白送给 AI。
+   预测着法直接用引擎上次 bestmove 免费附带的 ponder 字段，省掉原来那次 400ms 浅搜。
+   单线程 wasm 在 Worker 内同步搜索、中途 stop 无效（实测 6 秒发 stop、78 秒才回），
+   所以单核切成 3 秒一段的循环：每段结束都是检查点，你走子后最多等 3 秒就能接管；
+   深度封顶 38 层（256MB 实测 30 秒到 38 层）。
+   多线程 stop 实测 1ms 生效，可直接 go depth 40。 */
 async function startPonder(){
   try{
-    var lv=LEVELS[G.level];
-    
-    var fenNow = Rules.toFen(G.state, G.humanColor);
-    var pr = await ENGINE.search(fenNow, { movetime:400 });
-    if(!pr || !pr.best){ return; }
-    var f=Rules.uciToIdx(pr.best.slice(0,2)), t=Rules.uciToIdx(pr.best.slice(2,4));
-    var legal=Rules.legalMoves(G.state, f);
-    if(f<0||t<0||legal.indexOf(t)<0) return;
-    var after = Rules.applyMove(G.state, f, t).state;
-    var fenP = Rules.toFen(after, G.aiColor);
-    log('I','启动后台思考', { predict:pr.best, fen:fenP });
-    var p = ENGINE.search(fenP, { movetime: lv.movetime });
-    G.ponder = { fen:fenP, promise:p };
-    
-    p.then(function(){ if(G.ponder && G.ponder.promise===p){  } }).catch(function(){});
+    /* 预测着法优先用引擎上次 bestmove 免费附带的 ponder（省一次 400ms 浅搜）；
+       但它可能缺失（PV 太短）或在我方规则下不合法，这两种情况都退回浅搜，保证后台思考必定启动 */
+    var pm = G.lastPonder;
+    var f = pm?Rules.uciToIdx(pm.slice(0,2)):-1, t = pm?Rules.uciToIdx(pm.slice(2,4)):-1;
+    if(!pm || f<0 || t<0 || Rules.legalMoves(G.state,f).indexOf(t)<0){
+      var pr = await ENGINE.search(Rules.toFen(G.state, G.humanColor), { movetime:400 });
+      pm = pr && pr.best;
+      f = pm?Rules.uciToIdx(pm.slice(0,2)):-1; t = pm?Rules.uciToIdx(pm.slice(2,4)):-1;
+    }
+    if(!pm || f<0 || t<0 || Rules.legalMoves(G.state,f).indexOf(t)<0) return;
+    var fenP = Rules.toFen(Rules.applyMove(G.state,f,t).state, G.aiColor);
+    log('I','启动后台思考', { predict:pm, fen:fenP });
+    var h = { fen:fenP, stop:false };
+    G.ponder = h;
+    h.promise = (ENGINE.variant==='st') ? ponderSeg(fenP, h) : ENGINE.search(fenP, { depth:40 });
   }catch(e){ log('W','后台思考启动失败',{msg:e.message}); }
+}
+/* 单核分片后台思考：每段 3 秒，段间检查「你已走子」或「够深了」 */
+async function ponderSeg(fenP, h){
+  var r=null;
+  for(var k=0;k<12;k++){
+    r = await ENGINE.search(fenP, { movetime:3000 });
+    if(!G.ponder || G.ponder!==h || h.stop) break;
+    if((ENGINE.info.depth||0) >= 38) break;
+  }
+  return r;
 }
 
 
