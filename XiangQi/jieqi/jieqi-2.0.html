@@ -191,12 +191,18 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   border-left:1px solid #55432f;z-index:61;transform:translateX(100%);transition:transform .24s ease;
   display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y}
 #panel.open{transform:translateX(0)}
-.dhead{flex:0 0 auto;display:flex;align-items:center;gap:8px;
+.dhead{flex:0 0 auto;position:relative;display:flex;align-items:center;gap:8px;
   padding:calc(12px + var(--sit,0px)) 14px 12px;border-bottom:1px solid #3a2e22}
 .dhead h3{margin:0;font-size:16px;color:#e8b872;flex:1;font-weight:600}
 #btnDClose{flex:0 0 38px;width:38px;height:32px;padding:0;font-size:15px;font-family:inherit;
   border-radius:8px;border:1px solid #55432f;background:#2b2318;color:#f2e8da}
 #btnDClose:active{background:#3d3022}
+/* 诊断日志按钮原在 .dfoot 最底部，浏览器 UI 一遮挡就点不到；移到标题栏水平居中（.dhead 已 relative）。
+   绝对定位到标题栏正中：左边留够距离，点 ✕ 不会误触；也不再匹配 .dfoot button（那条是 flex:1 会撑满）。 */
+#btnLog{position:absolute;left:50%;top:calc(12px + var(--sit,0px));transform:translateX(-50%);
+  height:32px;padding:0 10px;font-size:12px;font-family:inherit;
+  border-radius:8px;border:1px solid #55432f;background:#2b2318;color:#f2e8da;white-space:nowrap}
+#btnLog:active{background:#3d3022}
 .dbody{flex:1 1 auto;overflow-y:auto;padding:12px 14px calc(20px + var(--sib,0px));
   -webkit-overflow-scrolling:touch}
 .dgrp{margin-bottom:16px}
@@ -438,7 +444,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
        #dock 带 transform，fixed 元素放进去会以 dock 为包含块而错位。 -->
   <div id="mask"></div>
   <div id="panel">
-    <div class="dhead"><h3>设置</h3><button id="btnDClose" type="button">✕</button></div>
+    <div class="dhead"><h3>设置</h3><button id="btnLog" type="button">诊断日志</button><button id="btnDClose" type="button">✕</button></div>
     <div class="dbody">
       <div class="dgrp">
         <h4>音效</h4>
@@ -466,7 +472,6 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
       </div>
     </div>
     <div class="dfoot">
-      <button id="btnLog" type="button">诊断日志</button>
       <button id="btnReset" type="button">恢复默认设置</button>
     </div>
   </div>
