@@ -69,6 +69,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   --s-hih:36%;
   /* 侧壁 fallback：老浏览器不支持 color-mix 时，至少保住一层厚度 */
   box-shadow:0 8px 0 var(--s-wall,#523820),0 11px 14px -3px rgba(0,0,0,.6);
+  transition:transform .12s ease,box-shadow .12s ease;
   border:0}
 /* 8 层递进实色侧壁：由单个 --s-wall 经 color-mix 逐层压暗算出，
    避免为每种皮肤各写 8 层。不支持 color-mix 的内核自动回落到上面的单层。 */
@@ -92,6 +93,10 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   0 1px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 84%, #000),
   0 2px 0 color-mix(in srgb, var(--s-wall,#8a5f22) 60%, #000),
   0 3px 6px rgba(0,0,0,.55)}
+/* 按下态：:active 手指一抬就没了，切页又是瞬时的，等于动画白做。
+   改用 .pressed 类由 JS 加上、切页完成后再移除，配合上面的 transition 才看得见下沉过程。 */
+.mbtn.pressed{transform:translate(2px,2px);
+  box-shadow:0 2px 0 var(--s-wall,#8a5f22),0 3px 6px rgba(0,0,0,.55)}
 /* 文字款色固定为 08：香槟色 + 1/2/3px 棕色阶梯挤出 + 4px 投影 */
 .mbtn b{position:relative;font-size:19px;font-weight:700;letter-spacing:.06em;color:#ffe9c2;
   text-shadow:1px 1px 0 #a8722a,2px 2px 0 #8a5c1e,3px 3px 0 #6c4716,4px 4px 5px rgba(0,0,0,.6)}
@@ -118,6 +123,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .hall .arw{display:inline-block;margin-right:10px;color:#e8c274;font-weight:700;
   transition:transform .18s}
 .hall:active .arw{transform:translateX(-4px)}
+.hall.pressed .arw{transform:translateX(-4px)}
 .hall:active{background-image:linear-gradient(#2a2118,#2a2118),
   linear-gradient(120deg,#7a5a2a,#e8c274,#fff0c4,#e8c274,#7a5a2a)}
 .hall .d{display:block;font-size:12px;font-weight:400;color:#9d8a6c;margin-top:2px}
@@ -300,7 +306,7 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .logbox{width:min(86vw,340px);height:min(86vw,340px);flex:0 0 auto;background:#231b14;
   border:1px solid #55432f;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .logbox .tip,.editbox .tip{font-size:12px;color:#9d8a6c;line-height:1.4;text-align:center;flex:0 0 auto}
-/* readonly 而非 disabled：可选中、可全选、可滚动，且 iOS 上不会弹键盘 */
+/* 可编辑（去掉 readonly）：手机上能用输入法长按全选/复制，不依赖系统复制菜单是否可用。 */
 .logbox textarea{flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;resize:none;
   background:#14100b;color:#c9b58a;border:1px solid #3a2e22;border-radius:8px;padding:8px;
   font:11px/1.45 ui-monospace,Menlo,Consolas,monospace;overflow-y:auto;-webkit-overflow-scrolling:touch;
@@ -450,25 +456,9 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
         <h4>音效</h4>
         <div class="dit"><div class="tt"><b>游戏音效</b><span>落子、翻子、吃子、将军、胜负等实时合成音</span></div>
           <div class="sw" id="swSound"></div></div>
-        <div class="dit dit-rng"><div class="drng"><span class="lab" id="volVal">100%</span>
+        <div class="dit dit-rng" id="rowVol"><div class="drng"><span class="lab" id="volVal">100%</span>
           <div class="sld" id="rgVol" data-min="0" data-max="100" data-val="100">
             <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div></div>
-      </div>
-      <div class="dgrp">
-        <h4>震动反馈</h4>
-        <div class="dit"><div class="tt"><b>手机震动</b><span id="vibDesc">走子、翻子、胜负时震动</span></div>
-          <div class="sw" id="swVib"></div></div>
-        <div class="dit dit-rng"><div class="drng"><span class="lab" id="vibVal">100ms</span>
-          <div class="sld" id="rgVib" data-min="0" data-max="100" data-val="100">
-            <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div>
-          <span class="dit-hint" id="vibHint"></span></div>
-      </div>
-      <div class="dgrp">
-        <h4>其他</h4>
-        <div class="dit dit-rng"><div class="drng"><span class="lab" id="thVal">8 线程</span>
-          <div class="sld" id="rgTh" data-min="1" data-max="16" data-val="8">
-            <div class="trk"><div class="fil"></div><div class="thb"></div></div></div></div>
-          <span class="dit-hint">修改后重启生效</span></div>
       </div>
     </div>
     <div class="dfoot">
@@ -512,7 +502,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.0.0';
+const JIEQI_VER = '0.0.9';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -526,8 +516,8 @@ function toast(msg, kind) {
 }
 
 /* ============ 诊断日志：事件码 + 短键名压缩，环形缓冲 2000 条 ============ */
-/* 设置状态：字段名与 jieqi.html 的 SETTINGS_DEFAULTS 一致，Snd/Hap 直接读它 */
-const ST = { sound:true, volume:100, vibrate:true, vibIntensity:100 };
+/* 设置状态：字段名与 jieqi.html 的 SETTINGS_DEFAULTS 一致，Snd 直接读它 */
+const ST = { sound:true, volume:100 };
 const PREF_KEY = 'jieqi-prefs-v1';
 function savePrefs(){ try{ localStorage.setItem(PREF_KEY, JSON.stringify(ST)); }catch(e){} }
 function loadPrefs(){
@@ -558,7 +548,7 @@ const LOG = {
       'ENV|w' + innerWidth + ' h' + innerHeight + ' scr' + screen.width + 'x' + screen.height +
         ' dpr' + d + ' vv' + (visualViewport ? Math.round(visualViewport.height) : 0),
       'CAP|fs' + (document.fullscreenEnabled ? 1 : 0) + ' wake' + (n.wakeLock ? 1 : 0) +
-        ' vib' + (n.vibrate ? 1 : 0) + ' ori' + (screen.orientation ? 1 : 0) +
+        ' ori' + (screen.orientation ? 1 : 0) +
         ' clip' + (n.clipboard ? 1 : 0) + ' tz' + (-new Date().getTimezoneOffset() / 60),
       'UA|' + (n.userAgent.match(/(Chrome|MicroMessenger|QQ|XiaoMi|Huawei|Safari|Firefox)\/[\d.]+/g) || ['?']).join(','),
       'T0|' + this.t0].join('\n');
@@ -718,12 +708,12 @@ const UI = {
 
     $('#btnFs').addEventListener('click', (e) => { e.stopPropagation(); this.captureFsAnchor(e); this.toggleFs(); });
     $('#btnSet').addEventListener('click', (e) => { e.stopPropagation(); this.openPanel(); });
-    $('#btnPve').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); Hap.tap(); LOG.add('M', 'pve'); this.openPveSetup(); });
-    $('#btnNet').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); Hap.tap(); LOG.add('M', 'net'); this.openNetSetup(); });
+    $('#btnPve').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); LOG.add('M', 'pve'); this.pressGo($('#btnPve'), () => this.openPveSetup(true), () => this.openPveSetup()); });
+    $('#btnNet').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); LOG.add('M', 'net'); this.pressGo($('#btnNet'), () => this.openNetSetup(null, true), () => this.openNetSetup()); });
     $('#btnBack').addEventListener('click', (e) => {
       e.stopPropagation();
       LOG.add('N', 'hall');
-      window.location.href = HALL_URL;
+      this.pressGo($('#btnBack'), null, () => { window.location.href = HALL_URL; });
     });
 
     /* ---------- 测试模式隐藏入口：连点版本号 5 次（2 秒窗口）---------- */
@@ -732,8 +722,6 @@ const UI = {
        再点 5 次从 DOM 移除，双向清理。切换静默，只记日志（用户选 3B）。 */
     this._verTaps = [];
     this._testBtn = null;
-    // 线程数：读上次保存值，默认 8（原本只记日志不落盘，刷新会丢失）
-    try { this._thVal = parseInt(localStorage.getItem('jieqi-threads'), 10) || 8; } catch (_) { this._thVal = 8; }
     $('#ver').addEventListener('click', (e) => {
       e.stopPropagation();
       const now = (performance.now ? performance.now() : Date.now());
@@ -753,7 +741,7 @@ const UI = {
     $('#btnNetTest').addEventListener('click', () => { this.closeTest(); this.openNetSetup(renderNetTest); });
     $('#btnLog').addEventListener('click', () => this.onLog());
     $('#btnReset').addEventListener('click', () => {
-      ST.sound = true; ST.volume = 100; ST.vibrate = true; ST.vibIntensity = 100;
+      ST.sound = true; ST.volume = 100;
       savePrefs(); Snd.setVolume();
       this.syncSettings();
       LOG.reset(); LOG.add('R', 'reset_all');
@@ -766,40 +754,22 @@ const UI = {
       this.syncSettings();
       if (ST.sound) Snd.tap();
     });
+    /* 反馈类型：'vol' 音量 / 空 = 无反馈。
+       抄自 jieqi 1.0 的 dRange：拖动时每 120ms 给一次「当前档位」的实感
+       （音量出声），松手再给一次确认；值没变则不反馈，
+       否则拖到 0/100 端点后继续滑会被钳住不动却照响，像卡住了。 */
     this.bindSlider('#rgVol', (v) => { ST.volume = v; Snd.setVolume(); },
-      () => { savePrefs(); LOG.add('R', 'vol=' + ST.volume); }, (v) => { $('#volVal').textContent = v + '%'; });
-    // 震动 → ST.vibrate / ST.vibIntensity（0 = 关闭，100 = 最长 100ms，与 jieqi 一致）
-    $('#swVib').addEventListener('click', () => {
-      ST.vibrate = !ST.vibrate; savePrefs(); LOG.add('R', 'vib=' + (ST.vibrate ? 1 : 0));
-      this.syncSettings();
-      if (ST.vibrate) Hap.tap();
-    });
-    this.bindSlider('#rgVib', (v) => { ST.vibIntensity = v; this.updVibHint(); },
-      () => { savePrefs(); LOG.add('R', 'vibms=' + ST.vibIntensity); },
-      (v) => { $('#vibVal').textContent = v + 'ms'; });
-    this.bindSlider('#rgTh', null,
-      (v) => { this._thVal = v; try { localStorage.setItem('jieqi-threads', String(v)); } catch (_) {}
-               LOG.add('R', 'thread=' + v); },
-      (v) => { $('#thVal').textContent = v + ' 线程'; });
+      () => { savePrefs(); Snd.setVolume(); if (ST.sound) Snd.move(); LOG.add('R', 'vol=' + ST.volume); },
+      (v) => { $('#volVal').textContent = v + '%'; }, 'vol');
 
   },
 
   // 把 ST 的值刷回面板控件（进入面板与恢复默认时用）
   syncSettings() {
     $('#swSound').classList.toggle('on', !!ST.sound);
-    $('#swVib').classList.toggle('on', !!ST.vibrate);
+    // 音效关掉后音量滑块没有意义（抄 jieqi 1.0：只在其开启时渲染）
+    $('#rowVol').style.display = ST.sound ? '' : 'none';
     this.setSlider('#rgVol', ST.volume, (v) => { $('#volVal').textContent = v + '%'; });
-    this.setSlider('#rgVib', ST.vibIntensity, (v) => { $('#vibVal').textContent = v + 'ms'; });
-    this.setSlider('#rgTh', this._thVal, (v) => { $('#thVal').textContent = v + ' 线程'; });
-    const ok = !!navigator.vibrate;
-    $('#vibDesc').textContent = ok ? '走子、翻子、胜负时震动' : '当前浏览器不支持震动（无 vibration API）';
-    this.updVibHint();
-  },
-  updVibHint() {
-    const v = this.getSlider('#rgVib');
-    $('#vibHint').textContent = navigator.vibrate
-      ? (v === 0 ? '已关闭：0 = 不震动' : '数值即震动时长：0 = 关闭震动，100 = 最长 100 毫秒')
-      : 'iPhone/iOS Safari 不支持震动';
   },
 
   /* ---- 自绘滑块：pointerdown + setPointerCapture 全程接管手势 ---- */
@@ -818,11 +788,28 @@ const UI = {
     if (thb) thb.style.left = (pct * 100) + '%';
     if (fmt) fmt(v);
   },
-  bindSlider(sel, onInput, onChange, fmt) {
+  bindSlider(sel, onInput, onChange, fmt, fb) {
     const el = $(sel); if (!el) return;
     const self = this;
     const mn = +el.dataset.min, mx = +el.dataset.max;
     let fmtCb = fmt || (() => {});
+    let lastFb = 0;
+    /* 拖动反馈（抄自 jieqi 1.0 的 dRange）：音量每 120ms 出一声，
+       让用户不看数字也能感知当前档位。值没变就完全不反馈——否则拖到 0/100 端点后继续滑，
+       值被钳住不动、反馈却照发，表现为「还在响」的假象。 */
+    const feedback = (v, changed) => {
+      if (!fb || !changed) return;
+      const now = Date.now();
+      if (now - lastFb < 120) return;
+      lastFb = now;
+      if (fb === 'vol') { if (ST.sound && v > 0) Snd.tap(); }
+    };
+    const apply = (v) => {
+      const changed = (v !== self.getSlider(sel));
+      self.setSlider(sel, v, fmtCb);
+      if (onInput) onInput(v);
+      feedback(v, changed);
+    };
     const posToVal = (clientX) => {
       const trk = el.querySelector('.trk');
       const r = trk.getBoundingClientRect();
@@ -833,17 +820,12 @@ const UI = {
       // 锁定该指针：手指滑出控件、滑到屏幕边缘都只驱动这个滑块
       try { el.setPointerCapture(e.pointerId); } catch (_) {}
       el._drag = true;
-      const v = posToVal(e.clientX);
-      self.setSlider(sel, v, fmtCb);
-      if (onInput) onInput(v);
+      apply(posToVal(e.clientX));
       e.preventDefault();
     });
     el.addEventListener('pointermove', (e) => {
       if (!el._drag) return;
-      const v = posToVal(e.clientX);
-      if (v === self.getSlider(sel)) return;
-      self.setSlider(sel, v, fmtCb);
-      if (onInput) onInput(v);
+      apply(posToVal(e.clientX));
     });
     const end = (e) => {
       if (!el._drag) return;
@@ -925,7 +907,7 @@ const UI = {
     LOG.copy();          // 先自动复制；苹果等复制不成功的机型靠下面的文本框手动选
     this.openLog();
   },
-  /* 日志弹窗：正方形，中间文本框可直接选中/全选复制，底部两个按钮。
+  /* 日志弹窗：正方形，中间文本框可编辑，手机上能长按全选复制（故不再需要「全选」按钮）。
      关闭方式只有「点框外的遮罩」——用 e.target===mask 一行判断，
      不给内部元素逐个加阻止冒泡，省代码。 */
   openLog() {
@@ -934,10 +916,9 @@ const UI = {
     mask.className = 'mask';
     const box = document.createElement('div');
     box.className = 'logbox';
-    box.innerHTML = '<div class="tip">日志已复制到剪切板，可以粘贴给开发者</div>' +
-      '<textarea readonly spellcheck="false"></textarea>' +
-      '<div class="row"><button type="button" id="lgSel">全选</button>' +
-      '<button type="button" id="lgDl">下载为txt</button></div>';
+    box.innerHTML = '<div class="tip">可长按全选复制</div>' +
+      '<textarea spellcheck="false"></textarea>' +
+      '<div class="row"><button type="button" id="lgDl">下载为txt</button></div>';
     const ta = box.querySelector('textarea');
     ta.value = txt;
     mask.appendChild(box);
@@ -946,10 +927,6 @@ const UI = {
     (document.getElementById('stage') || document.body).appendChild(mask);
     LOG.add('L', 'logbox=' + txt.length + 'B');
     mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
-    box.querySelector('#lgSel').addEventListener('click', () => {
-      ta.focus(); ta.select();
-      try { ta.setSelectionRange(0, txt.length); } catch (e) { }
-    });
     box.querySelector('#lgDl').addEventListener('click', () => LOG.download());
   },
 
@@ -1183,24 +1160,48 @@ const UI = {
     b.className = 'mbtn';
     b.id = 'btnTest';
     b.innerHTML = '<b>测试模式</b><span>调试用</span>';
-    b.addEventListener('click', (e) => { e.stopPropagation(); LOG.add('M', 'test'); this.openTest(); });
+    b.addEventListener('click', (e) => { e.stopPropagation(); LOG.add('M', 'test'); this.pressGo(b, null, () => this.openTest()); });
     menu.appendChild(b);
     this._testBtn = b;
     LOG.add('M', 'test_on');
   },
 
-  openPveSetup() {
+  /* 按钮先保持按下态，等 500ms 下沉动画播完再切页/跳转。
+     _goLock 防连点（按住不放或快速连点只会触发一次）；
+     pre 在等待期间就把目标页渲染好（此时 #app 还是 display:none，不显示），
+     时间一到只做显示 + layout，避免切页那一刻现渲染造成白屏。 */
+  pressGo(btn, pre, fn) {
+    if (this._goLock) return;
+    this._goLock = true;
+    if (btn) btn.classList.add('pressed');
+    if (pre) { try { pre(); } catch (e) { LOG.add('E', 'pre fail'); } }
+    clearTimeout(this._goT1); clearTimeout(this._goT2);
+    /* 1A 时间线：0-120ms 下沉 → 保持 60ms → 180ms 移除 pressed 触发回弹(.12s) → 停顿 → 500ms 切页。
+       回弹与切页不再同时发生，否则弹回来那一下永远看不见。 */
+    this._goT1 = setTimeout(() => {
+      if (btn) btn.classList.remove('pressed');
+    }, 180);
+    this._goT2 = setTimeout(() => {
+      this._goLock = false;
+      try { fn(); } catch (e) { LOG.add('E', 'go fail'); }
+    }, 500);
+  },
+  /* #app 默认 display:none，只有 .on 才画得出来；联机页与联机测试页共用这一套开关 */
+  showApp() {
     app.className = 'on';
     $('#stage').classList.add('gaming');
-    try{ document.body.classList.add('playing'); }catch(e){}
+    try { document.body.classList.add('playing'); } catch (e) {}
+  },
+  openPveSetup(hold) {
+    if (hold) { try { renderPveSetup(); } catch (e) { LOG.add('E', 'pre pve'); } return; }
+    this.showApp();
     renderPveSetup();
     this.layout();
   },
   /* #app 默认 display:none，只有 .on 才画得出来；联机页与联机测试页共用这一套开关 */
-  openNetSetup(fn) {
-    app.className = 'on';
-    $('#stage').classList.add('gaming');
-    try{ document.body.classList.add('playing'); }catch(e){}
+  openNetSetup(fn, hold) {
+    if (hold) { try { (fn || renderNetSetup)(); } catch (e) { LOG.add('E', 'pre net'); } return; }
+    this.showApp();
     (fn || renderNetSetup)();
     this.layout();
   },
@@ -1363,15 +1364,15 @@ function renderNetSetup(){
   var page = el('div','page'); page.style.justifyContent='flex-start';
   var c1 = el('div','card'); c1.appendChild(el('h3','','联机对战'));
   var row = el('div','row2');
-  var bc = el('button','btn pri','创建房间'); bc.onclick = function(){ Snd.tap(); Hap.tap(); netDoCreate(manualRoom()); };
-  var bj = el('button','btn pri','加入房间'); bj.onclick = function(){ Snd.tap(); Hap.tap(); netDoJoin(manualRoom()); };
+  var bc = el('button','btn pri','创建房间'); bc.onclick = function(){ Snd.tap(); netDoCreate(manualRoom()); };
+  var bj = el('button','btn pri','加入房间'); bj.onclick = function(){ Snd.tap(); netDoJoin(manualRoom()); };
   row.appendChild(bc); row.appendChild(bj); c1.appendChild(row);
   var tip = el('div','',''); tip.id='net-tip'; tip.className='hint'; tip.style.cssText='display:none;text-align:center;font-weight:700';
   c1.appendChild(tip);
   page.appendChild(c1);
   var bm = el('button','btn','手动输入房间号（约人对战）');
   bm.style.maxWidth='320px'; bm.style.flex='0 0 auto';
-  bm.onclick = function(){ Snd.tap(); Hap.tap();
+  bm.onclick = function(){ Snd.tap();
     var box = document.getElementById('netRoomIn');
     if(box){ box.parentNode.removeChild(box); return; }
     box = el('div','row'); box.id = 'netRoomIn';
@@ -1586,7 +1587,7 @@ function netToggleReady(){
   var b = document.querySelector('.readybtn');
   if(b){ b.textContent = ON.myReady ? '已就绪' : '准备'; b.className = 'btn pri readybtn' + (ON.myReady?' on':''); }
   netSend({ t:'ready', v:ON.myReady });
-  Hap.tap(); Snd.tap();
+  Snd.tap();
   netCheckStart();
 }
 function netCheckStart(){
@@ -1762,8 +1763,8 @@ function renderNetTest(){
   var page = el('div','page'); page.style.justifyContent='flex-start';
   var c1 = el('div','card'); c1.appendChild(el('h3','','联机测试'));
   var row = el('div','row2');
-  var bc = el('button','btn pri','创建房间'); bc.onclick=function(){ Snd.tap(); Hap.tap(); netTestCreate(); };
-  var bj = el('button','btn pri','加入房间'); bj.onclick=function(){ Snd.tap(); Hap.tap(); netTestJoin(); };
+  var bc = el('button','btn pri','创建房间'); bc.onclick=function(){ Snd.tap(); netTestCreate(); };
+  var bj = el('button','btn pri','加入房间'); bj.onclick=function(){ Snd.tap(); netTestJoin(); };
   row.appendChild(bc); row.appendChild(bj); c1.appendChild(row);
   var ht = el('div','',''); ht.id='net-tip'; ht.className='hint'; ht.style.cssText='display:none;text-align:center;font-weight:700';
   c1.appendChild(ht);
@@ -1826,7 +1827,7 @@ function netBar(title, backFn){
   var bar = el('div','netbar');
   var bk = el('button','bk','‹');
   bk.setAttribute('aria-label','返回');
-  bk.onclick = function(){ Snd.tap(); Hap.tap(); backFn ? backFn() : showMenu(); };
+  bk.onclick = function(){ Snd.tap(); backFn ? backFn() : showMenu(); };
   bar.appendChild(bk);
   bar.appendChild(el('div','tt', title));
   bar.appendChild(el('div','ph'));
@@ -1959,31 +1960,6 @@ var Snd = {
   draw:   function(){ this.unlock(); this.tone({f:440,dur:0.20,type:'square',gain:0.14}); }
 };
 
-var Hap = {
-  ok: (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function'),
-  fire: function(pattern){
-    if(!ST.vibrate || !this.ok) return;
-    var iv = ST.vibIntensity;
-    if(!iv || iv <= 0) return;                 
-    try{
-      
-      var out = pattern.map(function(d){ return Math.min(100, Math.round(d * iv)); })
-                       .filter(function(d){ return d > 0; });
-      if(!out.length) return;
-      navigator.vibrate(out);
-    }catch(e){}
-  },
-  
-  tap:      function(){ this.fire([1]); },
-  move:     function(){ this.fire([1]); },
-  reveal:   function(){ this.fire([1]); },
-  capture:  function(){ this.fire([1]); },
-  check:    function(){ this.fire([1,.6,1]); },
-  undo:     function(){ this.fire([1]); },
-  connect:  function(){ this.fire([1,.6,1]); },
-  win:      function(){ this.fire([1,.6,1,.6,1]); },
-  lose:     function(){ this.fire([1,.6,1]); }
-};
 
 var LEVELS = {
   easy:      { name:'简单',     depth:1,  desc:'搜索 1 层',                  hash:16  },
@@ -3368,7 +3344,7 @@ function optRow(items, cur, onPick){
       cur = it.key;
       nodes.forEach(function(x){ x.o.classList.remove('sel'); });
       o.classList.add('sel');
-      Snd.tap(); Hap.tap();
+      Snd.tap();
       onPick(it.key);
     };
     nodes.push({o:o, it:it});
@@ -3383,7 +3359,7 @@ function netBar(title, backFn, opt){
   var bar = el('div','netbar');
   var bk = el('button','bk','‹');
   bk.setAttribute('aria-label','返回');
-  bk.onclick = function(){ Snd.tap(); Hap.tap(); backFn ? backFn() : renderHome(); };
+  bk.onclick = function(){ Snd.tap(); backFn ? backFn() : renderHome(); };
   bar.appendChild(bk);
   bar.appendChild(el('div','tt', title));
   bar.appendChild(el('div','ph'));
@@ -3698,7 +3674,7 @@ function updateStatus(){
   var extra='';
   if(s.over && s.over.result==='check'){
     extra=' · <b>将军</b>';
-    if(G._lastCheckPly !== s.ply){ G._lastCheckPly = s.ply; Snd.check(); Hap.check(); }
+    if(G._lastCheckPly !== s.ply){ G._lastCheckPly = s.ply; Snd.check(); }
   }
   var noCapTxt = s.noCap>=60 ? (' · 无吃子'+s.noCap+'/80') : '';
   st.innerHTML = turnTxt + who + extra + noCapTxt;
@@ -3761,9 +3737,9 @@ function infoBox(msg){
 
 
 function feedbackMove(evt){
-  if(evt && evt.revealed){ Snd.reveal(); Hap.reveal(); return; }
-  if(evt && evt.captured){ Snd.capture(); Hap.capture(); return; }
-  Snd.move(); Hap.move();
+  if(evt && evt.revealed){ Snd.reveal(); return; }
+  if(evt && evt.captured){ Snd.capture(); return; }
+  Snd.move();
 }
 
 /* 双击改子：仅人机模式。兵种按钮复用 Board.drawPiece 画到小 canvas 上，
@@ -3805,7 +3781,7 @@ function boardTapAt(px, py){
     G.sel = idx;
     G.moves = Rules.legalMoves(G.state, idx);
     log('D','选中棋子', { idx:idx, uci:Rules.idxToUci(idx), moves:G.moves.length });
-    Snd.tap(); Hap.tap();
+    Snd.tap();
     Board.draw();
   } else {
     G.sel=null; G.moves=[]; Board.draw();
@@ -3952,14 +3928,14 @@ function openPieceEditor(idx){
     sw[c].addEventListener('click', function(e){
       e.stopPropagation();
       if(c===color) return;
-      setColor(c); Snd.tap(); Hap.tap();
+      setColor(c); Snd.tap();
     });
   });
   btns.forEach(function(btn){
     btn.addEventListener('click', function(e){
       e.stopPropagation();
       applyEdit(idx, color, btn.getAttribute('data-role'));
-      Snd.tap(); Hap.tap();
+      Snd.tap();
     });
   });
   mask.addEventListener('click', function(e){ if(e.target===mask) mask.remove(); });
@@ -4009,9 +3985,9 @@ function showResult(o){
   var mine = G.mode==='pve' ? G.humanColor : G.netColor;
   var note='';
   if(o.winner){ note = (o.winner===mine) ? ' 你赢了' : ' 你输了'; }
-  if(!o.winner){ Snd.draw(); Hap.tap(); }
-  else if(o.winner===mine){ Snd.win(); Hap.win(); }
-  else { Snd.lose(); Hap.lose(); }
+  if(!o.winner){ Snd.draw(); }
+  else if(o.winner===mine){ Snd.win(); }
+  else { Snd.lose(); }
   if(G.mode==='pvp'){
     infoBox(txt + note + '\n重新开始请退出房间再进');
     return;
@@ -4039,7 +4015,7 @@ function doUndo(){
   G.state=target; G.sel=null; G.moves=[]; G.ponder=null;
   G.viewState=Rules.viewFor(G.state,G.humanColor);
   log('I','悔棋', { backToPly:G.state.ply });
-  Snd.undo(); Hap.undo();
+  Snd.undo();
   Board.draw(); updateStatus(); toast('已悔棋');
 }
 
@@ -4206,7 +4182,7 @@ async function ponderSeg(fenP, h){
 
 window.UI = UI;
 /* 调试出口：诊断日志可直接读它，真机排查时也能在控制台看内部状态 */
-window.__JQ = { G:G, ENGINE:ENGINE, Rules:Rules, Board:Board, LEVELS:LEVELS, ST:ST, Snd:Snd, Hap:Hap,
+window.__JQ = { G:G, ENGINE:ENGINE, Rules:Rules, Board:Board, LEVELS:LEVELS, ST:ST, Snd:Snd,
   doMove:doMove, doUndo:doUndo, doHint:doHint, aiTurn:aiTurn, renderPveSetup:renderPveSetup, showMenu:showMenu };
 UI.init();
 })();
