@@ -502,7 +502,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.1.0';
+const JIEQI_VER = '0.1.1';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -1253,7 +1253,7 @@ function renderPveSetup(){
   page.appendChild(go);
   app.appendChild(page);
 }
-/* ==================== 联机：MQTT 信令 + 原生 WebRTC P2P（无 PeerJS） ==================== */
+/* ==================== 联机：MQTT 信令 + 原生 WebRTC P2P ==================== */
 /* 设计：MQTT 只负责「发现房间 + 交换 SDP/ICE」；握手完成后棋步走 DataChannel 直连，不过服务器。
    房间目录靠 MQTT retained：房主上线贴条、下线撕条，加入方订阅一次即拿到全量在线房间。 */
 var MQTT_BROKERS = [
