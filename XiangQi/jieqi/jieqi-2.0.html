@@ -502,7 +502,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.0.9';
+const JIEQI_VER = '0.1.0';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -1290,11 +1290,16 @@ function mqTopic(body){ var n=(body[0]<<8)|body[1]; var s=''; for(var k=2;k<2+n;
   var pl=''; for(var k2=2+n;k2<body.length;k2++) pl += String.fromCharCode(body[k2]); return { topic:s, payload:pl }; }
 var NET = {
   ws:null, broker:null, ok:false, cid:rndId(10), pk:1, onMsg:null, onOpen:null, onClose:null, pingT:0,
+  _connecting:false, _pending:null,
   connect: function(brokers, done){
     var self=this; var i=0; var finished=false;
+    if(self.ok){ done(self.broker); return; }
+    if(self._connecting){ (self._pending||(self._pending=[])).push(done); return; }   /* 并发保护：只建一条 WS */
+    self._connecting=true; self._pending=[done];
+    var _fin=function(bk){ var ps=self._pending||[]; self._pending=null; self._connecting=false; for(var z=0;z<ps.length;z++){ try{ ps[z](bk); }catch(e){} } };
     function tryNext(){
       if(finished) return;
-      if(i >= brokers.length){ done(null); return; }
+      if(i >= brokers.length){ _fin(null); return; }
       var bk = brokers[i++]; var ws=null; var settled=false;
       try{ ws = new WebSocket(bk.url, 'mqtt'); }catch(e){ tryNext(); return; }
       ws.binaryType = 'arraybuffer';
@@ -1312,7 +1317,7 @@ var NET = {
               if((q[j].t>>4)===3){ var m=mqTopic(q[j].body); self.onMsg && self.onMsg(m.topic, m.payload); } } };
             ws.onclose = function(){ self.ok=false; self.ws=null; clearInterval(self.pingT); self.onClose && self.onClose(); };
             self.pingT = setInterval(function(){ try{ ws.send(new Uint8Array(mqPing()).buffer); }catch(e){} }, 45000);
-            done(bk); return;
+            _fin(bk); return;
           } }
         };
       };
@@ -1392,7 +1397,7 @@ function renderNetSetup(){
 var _netConn = null, _tt = 0;
 function netEnsure(cb){
   if(NET.ok){ cb(true); return; }
-  netTip(''); toast('正在连接服务器…');
+  netTip('正在连接服务器…'); toast('正在连接服务器…');   /* 提示常驻，不再一闪而过 */
   NET.connect(MQTT_BROKERS, function(bk){
     if(!bk){ toast('服务器连接失败，请检查网络'); cb(false); return; }
     log('I','MQTT 已连接', { broker:bk.name }); cb(true);
@@ -1618,8 +1623,8 @@ function netOnData(s){
 function netApplyOppMove(from, to){
   if(!G.state || !ON.started) return;
   var res = null;
-  try{ res = Rules.applyMove(G.state, from, to); }catch(e){ log('E','应用对手走子失败',{msg:e.message}); return; }
-  if(!res || !res.state) return;
+  try{ res = Rules.applyMove(G.state, from, to); }catch(e){ log('E','应用对手走子失败',{msg:e.message}); try{ toast('对手走子无法应用，请重开'); }catch(e2){} return; }
+  if(!res || !res.state){ log('W','应用对手走子失败：起点为空',{from:from,to:to}); try{ toast('对手走子无法应用，请重开'); }catch(e2){} return; }
   G.history.push(Rules.clone(G.state));
   G.state = res.state;                       /* applyMove 是纯函数，返回新 state，必须回写 */
   if(res.evt) feedbackMove(res.evt);
@@ -1650,7 +1655,7 @@ function netLeave(){
 /* --- 测试模式：巅峰棋圣机器人。它走「真实服务器 + 真实 P2P」，用来验联机链路通不通。
        同一页面开第二个 RTCPeerConnection（独立 cid），网络路径与两台手机完全一致；
        唯一验不到的是跨网 NAT 穿透，那得两台真机。 --- */
-var BOT = { on:false, cid:null, room:null, role:null, ready:false, started:false, pc:null, dc:null, color:'black' };
+var BOT = { on:false, cid:null, room:null, role:null, ready:false, started:false, pc:null, dc:null, color:'black', state:null }; /* state：机器人自己的棋盘，与真人端 G.state 分离 */
 function botReset(){ BOT.on=false; BOT.cid=null; BOT.room=null; BOT.role=null; BOT.ready=false; BOT.started=false; BOT.pc=null; BOT.dc=null; }
 function botSend(o){ if(BOT.dc && BOT.dc.readyState==='open'){ try{ BOT.dc.send(JSON.stringify(o)); return true; }catch(e){} } return false; }
 function botPc(room, role){
@@ -1724,37 +1729,32 @@ function botOnData(s){
   if(d.t==='move'){ botApplyMove(d.from, d.to); return; }
 }
 function botApplyMove(from, to){
-  if(!G.state) return;
-  var res=null; try{ res = Rules.applyMove(G.state, from, to); }catch(e){ return; }
-  if(!res || !res.state) return;
-  G.state = res.state;
-  if(res.evt) feedbackMove(res.evt);
-  G.sel=null; G.moves=[]; G.viewState = Rules.viewFor(G.state, G.netColor);
-  Board.draw(); updateStatus();
-  if(isGameOver()) return;
-  botThink();
+  if(!BOT.state && G.state) BOT.state = Rules.clone(G.state);
+  var st = BOT.state; if(!st) return;
+  var res=null; try{ res = Rules.applyMove(st, from, to); }catch(e){ log('E','机器人应用走子失败',{msg:String(e && e.message)}); return; }
+  if(!res || !res.state){ log('W','机器人应用走子失败：起点为空',{from:from,to:to}); return; }
+  BOT.state = res.state;              /* 只动自己的棋盘；真人端靠 netApplyOppMove 更新 G.state */
+  if(BOT.state.turn === BOT.color) setTimeout(botThink, 300);
 }
 /* 机器人思考：独占引擎（联机测试里「我」不用引擎），固定巅峰棋圣 */
 async function botThink(){
-  if(!BOT.on || !G.state) return;
-  if(G.state.turn !== BOT.color) return;
-  if(isOver(G.state.over)) return;
+  if(!BOT.on) return;
+  if(!BOT.state && G.state) BOT.state = Rules.clone(G.state);
+  var st = BOT.state; if(!st) return;
+  if(st.turn !== BOT.color) return;
+  if(isOver(st.over)) return;
   try{ await ENGINE.preload(function(){}); }catch(e){ netTip('机器人引擎未就绪：'+e.message, true); return; }
   try{
     var lv = LEVELS['peak'];
     await ENGINE.setHash(Math.max(HASH_OF('peak'), ENGINE.suggestedHash()));
-    var fen = Rules.toFen(G.state, BOT.color);
+    var fen = Rules.toFen(st, BOT.color);
     var r = await ENGINE.search(fen, { movetime: lv.movetime });
-    var mv = pickEngineMove(G.state, BOT.color, r && r.best);
+    var mv = pickEngineMove(st, BOT.color, r && r.best);
     if(!mv) return;
-    var res = Rules.applyMove(G.state, mv.from, mv.to);
+    var res = Rules.applyMove(st, mv.from, mv.to);
     if(!res || !res.state) return;
-    G.state = res.state;
-    if(res.evt) feedbackMove(res.evt);
-    G.sel=null; G.moves=[]; G.viewState = Rules.viewFor(G.state, G.netColor);
-    Board.draw(); updateStatus();
+    BOT.state = res.state;            /* 只动自己的棋盘；真人端靠 netApplyOppMove 更新 G.state */
     botSend({ t:'move', from:mv.from, to:mv.to });
-    if(isGameOver()) return;
   }catch(e){ log('E','机器人思考异常',{msg:String(e && e.message)}); }
 }
 /* --- 联机测试入口：与正常联机同一套页面，只是开房/加入后由机器人接手另一端 --- */
@@ -2221,6 +2221,7 @@ var Rules = (function(){
   function applyMove(s, from, to){
     var n = clone(s);
     var p = n.board[from], cap = n.board[to];
+    if(!p){ return null; }                 /* 防御：起点已空（同一步被应用两次） */
     var wasFaceDown = p.faceDown;
     n.board[to] = { color:p.color, role:p.role, faceDown:false };
     n.board[from] = null;
