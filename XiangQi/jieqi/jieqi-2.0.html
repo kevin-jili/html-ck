@@ -283,6 +283,8 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
    所以改用「插一个 100% 宽的零高度断行元素」强制换行，宽度另算。 */
 .bottombar .br{flex:0 0 100%;height:0}
 .bottombar .btn.q{flex:0 0 auto;width:calc((100% - 18px) / 4)}
+.bottombar .btn.s2{flex:1 1 0;min-width:0;padding:9px 4px;font-size:13px}
+.bottombar .btn.s2[disabled]{opacity:.45}
 .btn.pri{background:#a8642a;border-color:#c8813c;color:#fff;font-weight:600}
 .btn.sm{padding:7px 10px;font-size:13px}
 .topbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:#1e1812;border-bottom:1px solid #3a2e22}
@@ -315,10 +317,21 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .logbox .row button{flex:1 1 0;padding:10px 0;font-size:14px;font-weight:700;color:#ffe9c2;
   background:#2c2318;border:1px solid #55432f;border-radius:10px}
 
-/* 改子弹窗：双击人机棋盘上的子弹出。第一行 6 个棋子图标直接复用 Board.drawPiece，
-   第二行红/黑互斥开关（文字前小亮点：亮=开启，灭=关闭）。 */
-.editbox{width:min(90vw,340px);flex:0 0 auto;background:#231b14;border:1px solid #55432f;
+/* 改子弹窗：连点人机棋盘上的子（1500ms 内两次同一格）弹出。第一行 6 个棋子图标直接复用 Board.drawPiece，
+   第二行三个开关：红 / 黑 / 暗（文字前小亮点：亮=开启，灭=关闭）。
+   暗不是第三方，是本方阵营的「明暗开关」：亮=该子是暗子，且此时不可再点（同己方颜色键）。
+   右上角 ✕ 是唯一关闭方式——点遮罩不关，避免手指第二下落点在黑边上把弹窗秒关。 */
+.editbox{position:relative;width:min(90vw,340px);flex:0 0 auto;background:#231b14;border:1px solid #55432f;
   border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+/* ✕ 绝对定位到右上角，不占 flex 流，标题因此能正常居中。
+   44×44 是移动端可点最小尺寸，方向键/拇指都够得着。
+   负值把 ✕ 挪出卡片（骑在圆角上）：实测原来 top:6/right:6 时，44 高的方块比 17 高的标题多出 21px，
+   溢进第一行棋子的兵种键，压掉「卒」键顶部 38×11px、卒字图标顶部 5px（320/360/390/430 四屏宽全中）。
+   改成 -14/-14 后四屏宽实测压卒归零、命中区仍 44×44、右边缘零视口溢出（.mask 有 20px padding 兜着）。 */
+.edx{position:absolute;top:-14px;right:-14px;width:44px;height:44px;flex:0 0 auto;
+  background:#3c2f22;color:#f2e8da;border:1px solid #55432f;border-radius:10px;
+  font-size:17px;line-height:1;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.edx:active{background:#55432f;transform:scale(.94)}
 
 .edrow{display:flex;gap:6px}
 .pbtn{flex:1;min-width:0;background:linear-gradient(180deg,#2f2619,#282015);border:1px solid #4d3c28;
@@ -333,6 +346,9 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .swbtn .led{width:9px;height:9px;border-radius:50%;background:#4a4034;flex:0 0 auto}
 .swbtn.on{border-color:#e8b872;box-shadow:0 0 0 2px rgba(232,184,114,.35)}   /* 选中方醒目边框 */
 .swbtn.on .led{background:#ffd06a;box-shadow:0 0 6px rgba(255,208,106,.85)}
+/* 不可用且未选中的开关（如无本位兵种格上的「暗」）压暗显示。
+   必须排除 .on——选中的开关同样是 disabled，若一起压暗会把「已选中」也画成灰的。 */
+.swbtn:disabled:not(.on){opacity:.45}
 .btn:active{background:#55432f}
 canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touch-action:manipulation}
 .page{width:100%;max-width:none}
@@ -502,7 +518,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.1.1';
+const JIEQI_VER = '0.3.1';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -1334,7 +1350,7 @@ var NET = {
 var ICE_CFG = { iceServers:[ { urls:'stun:stun.l.google.com:19302' }, { urls:'stun:stun1.l.google.com:19302' } ] };
 var RTC = { pc:null, dc:null, role:null, onOpen:null, onData:null, onState:null,
   init: function(role, onIce){
-    this.close(); var self=this; this.role=role;
+    this.close(); var self=this; this.role=role; this.pending=[];
     var pc = new RTCPeerConnection(ICE_CFG); this.pc = pc;
     pc.onicecandidate = function(e){ if(e.candidate && onIce) onIce(e.candidate.toJSON ? e.candidate.toJSON() : e.candidate); };
     pc.onconnectionstatechange = function(){ self.onState && self.onState(pc.connectionState); };
@@ -1351,7 +1367,8 @@ var RTC = { pc:null, dc:null, role:null, onOpen:null, onData:null, onState:null,
   },
   offer: function(){ var pc=this.pc; var s=this; return pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){ return pc.localDescription; }); }); },
   answer: function(remote){ var pc=this.pc; return pc.setRemoteDescription(remote).then(function(){ return pc.createAnswer(); }).then(function(a){ return pc.setLocalDescription(a).then(function(){ return pc.localDescription; }); }); },
-  addIce: function(c){ if(!this.pc || !this.pc.remoteDescription) return; try{ var p=this.pc.addIceCandidate(c); if(p && p.catch) p.catch(function(){}); }catch(e){} },
+  addIce: function(c){ if(!this.pc) return; if(!this.pc.remoteDescription){ (this.pending||(this.pending=[])).push(c); return; } try{ var p=this.pc.addIceCandidate(c); if(p && p.catch) p.catch(function(){}); }catch(e){} },
+  flushIce: function(){ var ps=this.pending||[]; this.pending=[]; if(!this.pc || !this.pc.remoteDescription){ this.pending=ps; return; } for(var i=0;i<ps.length;i++){ try{ var p=this.pc.addIceCandidate(ps[i]); if(p && p.catch) p.catch(function(){}); }catch(e){} } if(ps.length) log('I','补灌早期 ICE', { n:ps.length }); },
   send: function(o){ if(this.dc && this.dc.readyState==='open'){ try{ this.dc.send(typeof o==='string'?o:JSON.stringify(o)); return true; }catch(e){} } return false; },
   close: function(){ try{ if(this.dc){ this.dc.onopen=null; this.dc.onmessage=null; this.dc.close(); } }catch(e){}
     try{ if(this.pc){ this.pc.onicecandidate=null; this.pc.onconnectionstatechange=null; this.pc.ondatachannel=null; this.pc.close(); } }catch(e){}
@@ -1511,10 +1528,11 @@ function netEnterGame(room, role){
     if(!d) return;
     if(ON.testMode && BOT.on && d.from === NET.cid){ botOnMsg(topic, d); return; }
     if(d.from === NET.cid) return;                 /* 忽略自己发的回声 */
-    if(topic === rmSig(room,'leave')){ ON.peerReady=false; G.oppGone=true; netTip('对手已离场', true); updateStatus(); if(role==='host'){ peerSeen=false; ON.oppCid=null; NET.pub(rmDir(room), roomStamp(room), true); } return; }
+    if(topic === rmSig(room,'leave')){ ON.peerReady=false; G.oppGone=true; netTip('对手已离场', true); updateStatus(); try{ refreshSwapBtns(); }catch(e){} if(role==='host'){ peerSeen=false; ON.oppCid=null; NET.pub(rmDir(room), roomStamp(room), true); } return; }
     if(topic === rmSig(room,'join')){
       if(role!=='host' || peerSeen) return;
-      peerSeen = true; ON.oppCid = d.from; netTip('对手已进房，正在握手…'); NET.pub(rmDir(room), roomStamp(room), true);
+      peerSeen = true; ON.oppCid = d.from; netTip('对手已进房，正在握手…'); log('I','对手已进房', { room:room, opp:ON.oppCid }); try{ refreshSwapBtns(); }catch(e){}
+      NET.pub(rmDir(room), roomStamp(room), true);
       RTC.init('host', function(c){ NET.pub(rmSig(room,'ice'), JSON.stringify({from:NET.cid, cand:c}), false); });
       RTC.onOpen = function(){ netOnReady(); };
       RTC.onData = function(s){ netOnData(s); };
@@ -1524,7 +1542,7 @@ function netEnterGame(room, role){
     }
     if(topic === rmSig(room,'offer')){
       if(role!=='guest') return;
-      ON.oppCid = d.from; netTip('收到房主握手，正在回应…');
+      ON.oppCid = d.from; netTip('收到房主握手，正在回应…'); log('I','收到房主握手', { room:room, host:d.from }); try{ refreshSwapBtns(); }catch(e){}
       if(!RTC.pc){
         RTC.init('guest', function(c){ NET.pub(rmSig(room,'ice'), JSON.stringify({from:NET.cid, cand:c}), false); });
         RTC.onOpen = function(){ netOnReady(); };
@@ -1537,13 +1555,14 @@ function netEnterGame(room, role){
     if(topic === rmSig(room,'answer')){
       if(role!=='host' || !RTC.pc) return;
       if(ON.oppCid && d.from !== ON.oppCid) return;      /* 上一个对手遗留的 answer 直接丢掉 */
-      try{ var q=RTC.pc.setRemoteDescription(d.sdp); if(q && q.catch) q.catch(function(){}); }catch(e){}
+      log('I','收到 answer，已设远程描述', { room:room });
+      try{ var q=RTC.pc.setRemoteDescription(d.sdp); if(q && q.then){ q.then(function(){ RTC.flushIce(); }).catch(function(){}); } else { RTC.flushIce(); } }catch(e){}
       return;
     }
     if(topic === rmSig(room,'ice')){
-      if(!RTC.pc || !RTC.pc.remoteDescription) return;
+      if(!RTC.pc) return;
       if(ON.oppCid && d.from !== ON.oppCid) return;
-      RTC.addIce(d.cand);
+      RTC.addIce(d.cand);          /* 远程描述还没就绪时自动缓冲，握手完成后补灌 */
       return;
     }
   };
@@ -1580,6 +1599,7 @@ function boardLoad(s){ var b=new Array(90);
 function netOnReady(){
   if(ON.role==='host' && G.state){ netSend({ t:'init', bd:boardDump(G.state) }); log('I','已发送初始布局', { room:ON.room }); }
   netTip('已与对手直连，请点「准备」');
+  try{ refreshSwapBtns(); }catch(e){}
   updateStatus();
 }
 function netSend(o){ if(RTC.send(o)) return true; toast('尚未与对手建立连接'); return false; }
@@ -1604,6 +1624,32 @@ function netCheckStart(){
     if(ON.testMode && BOT.on && G.state && G.state.turn === BOT.color) setTimeout(botThink, 600);
   }
 }
+/* --- 换边：红黑归属交换 --- */
+function oppInRoom(){
+  if(!ON.room) return false;
+  if(BOT.on) return true;
+  if(ON.role === 'guest') return true;
+  return !!ON.oppCid;
+}
+function setNetColor(c){
+  G.netColor = c; G.humanColor = c; G.aiColor = Rules.other(c);
+  G.flip = (c === 'black');
+  if(G.state) G.viewState = Rules.viewFor(G.state, c);
+  try{ Board.draw(); updateStatus(); }catch(e){}
+  refreshSwapBtns();
+  log('I','换边', { color:c });
+}
+var swapBtns = [];
+function refreshSwapBtns(){
+  var tgt = Rules.other(G.netColor || 'red');      /* 目标色：点了就换到这一方，所以文字必须跟着当前执色变 */
+  var nm = (tgt === 'red') ? '红' : '黑';
+  for(var i=0;i<swapBtns.length;i++){
+    var b = swapBtns[i]; if(!b) continue;
+    b._c = tgt; b._nm = nm;
+    b.textContent = oppInRoom() ? ('申请执' + nm) : ('我执' + nm);
+    b.disabled = !!ON.started;
+  }
+}
 /* --- 收到对手消息 --- */
 function netOnData(s){
   var d = null; try{ d = JSON.parse(s); }catch(e){ return; }
@@ -1618,7 +1664,21 @@ function netOnData(s){
   if(d.t === 'move'){ netApplyOppMove(d.from, d.to); return; }
   if(d.t === 'undo'){ toast('对手申请悔棋'); return; }
   if(d.t === 'resign'){ G.state.over = { result:'resign', winner:G.netColor }; updateStatus(); Board.draw(); toast('对手认输'); return; }
-  if(d.t === 'swap'){ toast('对手申请执黑'); return; }
+  if(d.t === 'swap'){
+    var want = (d.want === 'red') ? 'red' : 'black';
+    var nm = (want === 'red') ? '红' : '黑';
+    askBox('对手申请执' + nm + '，同意吗？', '同意', function(){
+      setNetColor(Rules.other(want));
+      netSend({ t:'swapAgree', want:want });
+      toast('已同意对手执' + nm);
+    }, '拒绝', function(){ netSend({ t:'swapReject' }); });
+    return;
+  }
+  if(d.t === 'swapAgree'){
+    var w2 = (d.want === 'red') ? 'red' : 'black';
+    setNetColor(w2); toast('对手同意，你执' + ((w2 === 'red') ? '红' : '黑')); return;
+  }
+  if(d.t === 'swapReject'){ toast('对手拒绝了换边申请'); return; }
 }
 function netApplyOppMove(from, to){
   if(!G.state || !ON.started) return;
@@ -1658,9 +1718,16 @@ function netLeave(){
 var BOT = { on:false, cid:null, room:null, role:null, ready:false, started:false, pc:null, dc:null, color:'black', state:null }; /* state：机器人自己的棋盘，与真人端 G.state 分离 */
 function botReset(){ BOT.on=false; BOT.cid=null; BOT.room=null; BOT.role=null; BOT.ready=false; BOT.started=false; BOT.pc=null; BOT.dc=null; }
 function botSend(o){ if(BOT.dc && BOT.dc.readyState==='open'){ try{ BOT.dc.send(JSON.stringify(o)); return true; }catch(e){} } return false; }
+function botFlushIce(){
+  var ps = BOT.iceBuf||[]; BOT.iceBuf=[];
+  if(!BOT.pc || !BOT.pc.remoteDescription){ BOT.iceBuf = ps; return; }
+  for(var i=0;i<ps.length;i++){ try{ var p=BOT.pc.addIceCandidate(ps[i]); if(p && p.catch) p.catch(function(){}); }catch(e){} }
+  if(ps.length) log('I','机器人补灌早期 ICE', { n:ps.length });
+}
 function botPc(room, role){
   var pc = new RTCPeerConnection(ICE_CFG);
-  BOT.pc = pc;
+  BOT.pc = pc; BOT.iceBuf = [];
+  log('I','机器人：建连', { room:room, role:role });
   pc.onicecandidate = function(e){ if(e.candidate) NET.pub(rmSig(room,'ice'), JSON.stringify({from:BOT.cid, cand:e.candidate.toJSON?e.candidate.toJSON():e.candidate}), false); };
   function bind(dc){ BOT.dc=dc;
     dc.onopen = function(){
@@ -1675,9 +1742,10 @@ function botPc(room, role){
 /* 机器人作为客机加入我的房间：完全复刻真人客机的动作（发 join → 收 offer → 回 answer → 灌 ICE） */
 function botJoin(room){
   BOT.on=true; BOT.cid = rndId(10); BOT.room=room; BOT.role='guest';
-  BOT.color = 'black';
+  BOT.color = 'black'; BOT.iceBuf = [];
   botPc(room,'guest');
   NET.pub(rmSig(room,'join'), JSON.stringify({from:BOT.cid}), false);
+  log('I','机器人：已发 join', { room:room, cid:BOT.cid });
   netTip('机器人正在加入 ' + room + '…');
 }
 /* 机器人作为房主开房：贴 retained 条，等我的 join */
@@ -1693,6 +1761,7 @@ function botOnMsg(topic, d){
   var room = BOT.room; if(!room) return;
   if(d.from === BOT.cid) return;                       /* 自己发的回声 */
   if(topic === rmSig(room,'join') && BOT.role==='host'){
+    log('I','机器人：收到 join，开始握手', { room:room });
     botPc(room,'host');
     botPcOffer(room);
     return;
@@ -1700,16 +1769,19 @@ function botOnMsg(topic, d){
   if(topic === rmSig(room,'offer') && BOT.role==='guest'){
     if(!BOT.pc) botPc(room,'guest');
     var pc=BOT.pc;
-    pc.setRemoteDescription(d.sdp).then(function(){ return pc.createAnswer(); }).then(function(a){
-      return pc.setLocalDescription(a).then(function(){ NET.pub(rmSig(room,'answer'), JSON.stringify({from:BOT.cid, sdp:pc.localDescription}), false); });
+    log('I','机器人：收到 offer', { room:room });
+    pc.setRemoteDescription(d.sdp).then(function(){ botFlushIce(); return pc.createAnswer(); }).then(function(a){
+      return pc.setLocalDescription(a).then(function(){ NET.pub(rmSig(room,'answer'), JSON.stringify({from:BOT.cid, sdp:pc.localDescription}), false); log('I','机器人：已发 answer', { room:room }); });
     }).catch(function(e){ log('E','机器人 answer 失败',{msg:String(e)}); });
     return;
   }
   if(topic === rmSig(room,'answer') && BOT.role==='host' && BOT.pc){
-    try{ BOT.pc.setRemoteDescription(d.sdp); }catch(e){}
+    log('I','机器人：收到 answer', { room:room });
+    try{ var q=BOT.pc.setRemoteDescription(d.sdp); if(q && q.then){ q.then(function(){ botFlushIce(); }).catch(function(){}); } else { botFlushIce(); } }catch(e){}
     return;
   }
-  if(topic === rmSig(room,'ice') && BOT.pc && BOT.pc.remoteDescription){
+  if(topic === rmSig(room,'ice') && BOT.pc){
+    if(!BOT.pc.remoteDescription){ (BOT.iceBuf || (BOT.iceBuf=[])).push(d.cand); return; }
     try{ var p=BOT.pc.addIceCandidate(d.cand); if(p && p.catch) p.catch(function(){}); }catch(e){}
     return;
   }
@@ -1718,6 +1790,7 @@ function botPcOffer(room){
   var pc=BOT.pc;
   pc.createOffer().then(function(o){ return pc.setLocalDescription(o).then(function(){
     NET.pub(rmSig(room,'offer'), JSON.stringify({from:BOT.cid, sdp:pc.localDescription}), false);
+    log('I','机器人：已发 offer', { room:room });
   }); }).catch(function(e){ log('E','机器人 offer 失败',{msg:String(e)}); });
 }
 /* 机器人收到我的消息：准备同步 + 走子 */
@@ -1727,6 +1800,15 @@ function botOnData(s){
   if(d.t==='kick'){ try{ if(BOT.dc) BOT.dc.close(); }catch(e){} try{ if(BOT.pc) BOT.pc.close(); }catch(e){} BOT.on=false; BOT.pc=null; BOT.dc=null; return; }
   if(d.t==='ready'){ if(d.v && BOT.ready && BOT.pc){ botSend({t:'ready', v:true}); } return; }
   if(d.t==='move'){ botApplyMove(d.from, d.to); return; }
+  if(d.t==='swap'){
+    BOT.swapN = (BOT.swapN||0) + 1;
+    var ok = (BOT.swapN % 2 === 1);
+    setTimeout(function(){
+      if(ok){ BOT.color = (d.want === 'red') ? 'black' : 'red'; botSend({ t:'swapAgree', want:d.want }); }
+      else { botSend({ t:'swapReject' }); }
+    }, 400);
+    return;
+  }
 }
 function botApplyMove(from, to){
   if(!BOT.state && G.state) BOT.state = Rules.clone(G.state);
@@ -3466,20 +3548,27 @@ async function startPve(){
 function simBtnsFrag(mk){
   var frag = document.createDocumentFragment();
   if(!ON.testMode) return frag;
-  frag.appendChild(mk('踢出对手', function(){
+  function m2(t, fn){ var b = mk(t, fn); b.className = 'btn s2'; return b; }
+  frag.appendChild(m2('踢出对手', function(){
     confirmBox('确定踢出对手？', function(){ netKickBot(); });
   }));
-  frag.appendChild(mk('邀请机器人', function(){
+  frag.appendChild(m2('邀请机器人', function(){
     if(BOT.on){ toast('机器人已在房间里'); return; }
     if(!ON.room){ toast('还没进入房间'); return; }
     netSend({ t:'kick' });
     if(ON.role==='host') botJoin(ON.room);
     else toast('仅房主可邀请机器人');
   }));
-  frag.appendChild(mk('解散房间', function(){
+  frag.appendChild(m2('解散房间', function(){
     confirmBox('解散将终止对局并回收房间号，确定？', function(){
       netSend({ t:'kick' }); netLeave(); renderNetTest();
     });
+  }));
+  frag.appendChild(m2('机器人申请执黑（红）', function(){
+    if(!BOT.on){ toast('机器人不在房间里'); return; }
+    var want = (BOT.color === 'black') ? 'red' : 'black';
+    toast('机器人将在 3 秒后申请执' + ((want === 'red') ? '红' : '黑'));
+    setTimeout(function(){ botSend({ t:'swap', want:want }); }, 3000);
   }));
   return frag;
 }
@@ -3566,14 +3655,31 @@ function renderGame(){
       });
     }));
     bb.appendChild(mk('悔棋', function(){ if(netSend({t:'undo'})) toast('已向对手申请悔棋'); }));
-    bb.appendChild(mk('申请执黑', function(){ if(netSend({t:'swap'})) toast('已向对手申请执黑'); }));
+    swapBtns.length = 0;
+    /* 单颗切换按钮：始终显示「点了会变成哪一方」，点了立刻跟着变（我执红 ⇄ 我执黑） */
+    (function(){
+      var b = mk('', function(){
+        var c = b._c || Rules.other(G.netColor || 'red');
+        var nm = (c === 'red') ? '红' : '黑';
+        if(ON.started){ toast('开局后不能换边'); return; }
+        if(oppInRoom()){
+          if(netSend({ t:'swap', want:c })) toast('已向对手申请执' + nm);
+        } else {
+          setNetColor(c); toast('已切换为你执' + nm);
+        }
+      });
+      b.className = 'btn'; swapBtns.push(b); bb.appendChild(b);
+    })();
+    refreshSwapBtns();
   }
+  if(ON.testMode) bb.appendChild(el('i','br'));
   bb.appendChild(simBtnsFrag(mk));
   app.appendChild(bb);
   
   Board.init(cv);
   cv.addEventListener('click', onBoardClick);
-  try{ bindBoardTap(cv); }catch(e){ log('E','棋盘触摸绑定失败',{msg:e.message}); }
+  try{ bindBoardTap(cv); log('T','棋盘触摸已绑定', { cell:Board.cell, pad:Board.pad, W:Board.W, H:Board.H }); }
+  catch(e){ log('E','棋盘触摸绑定失败',{msg:e.message}); }
   setTimeout(function(){ Board.resize(); Board.draw(); }, 0);
   try{ document.body.classList.add('playing'); }catch(e){}
 }
@@ -3743,42 +3849,58 @@ function feedbackMove(evt){
   Snd.move();
 }
 
-/* 双击改子：仅人机模式。兵种按钮复用 Board.drawPiece 画到小 canvas 上，
-   与棋盘上的棋子外观完全一致；红/黑互斥，当前所属方亮灯且不可点。将/帅不可改。 */
-var EDIT_ROLES = ['chariot','horse','cannon','elephant','advisor','soldier'];
+/* 改子：仅人机模式，唯一通路是【连点同一格】（DBLCLICK_MS 内两下）。
+   兵种按钮复用 Board.drawPiece 画到小 canvas 上，与棋盘上的棋子外观完全一致；
+   红/黑互斥，当前所属方亮灯且不可点。将/帅不可改。
+   弹窗只能点右上角 ✕ 关闭（点遮罩不关），改完不自动关，可连改多个。
+
+   诊断打点：入口 / 每条 return / 弹窗入口都记一条 T 码，
+   下次日志能一眼看出点击是「没进来」还是「进来后被哪条拦掉」。 */
 function boardTapAt(px, py){
-  if(!G.state) return;
-  if(G.loading){ toast('引擎加载中，请稍候'); return; }
+  if(!G.state) { log('T','btap 无棋局'); return; }
+  var idx0 = Board.pick(px, py);
+  log('T','btap入', { x:Math.round(px), y:Math.round(py), i:idx0, md:G.mode });
+  /* 连点改子。放在 loading / turn / thinking 三项拦截【之前】——
+     4A 要求「AI 思考中 / 非我方回合 / 加载中也能改」，那三项拦截会把这些情况全挡掉
+     （实测 turn=black 时直接 toast「还没到你的回合」）。
+     窗口 1500ms：日志实测用户两次点击间隔 1377ms / 914ms，原 500ms 根本判不成连点。 */
+  if(G.mode==='pve' && idx0>=0){
+    var now0 = Date.now();
+    if(idx0 === Board.lastEditIdx && now0 - Board.lastEditT < DBLCLICK_MS){
+      var gap0 = now0 - Board.lastEditT;    /* 必须先取间隔再清零，否则 gap 恒等于 now0 */
+      Board.lastEditIdx = -1; Board.lastEditT = 0;
+      log('T','btap连点弹窗', { i:idx0, uci:Rules.idxToUci(idx0), gap:gap0 });
+      openPieceEditor(idx0);
+      return;
+    }
+    Board.lastEditIdx = idx0; Board.lastEditT = now0;
+    log('T','btap记首点', { i:idx0 });
+  }
+  if(G.loading){ log('T','btap拦:loading'); toast('引擎加载中，请稍候'); return; }
   if(G.mode==='pvp' && G.phase!=='playing'){
+    log('T','btap拦:pvp未开局');
     if(G.oppGone) toast('对手已离场');
     else if(!ON.on) toast('尚未进入房间');
     else toast('双方都点「准备」后才能开始');
     return;
   }
-  if(isOver(G.state.over)) return;
+  if(isOver(G.state.over)){ log('T','btap拦:已结束'); return; }
   var myColor = G.mode==='pve' ? G.humanColor : G.netColor;
-  if(G.state.turn !== myColor) { toast('还没到你的回合'); return; }
-  if(G.thinking) return;
-  var idx = Board.pick(px, py);
-  if(idx<0) return;
+  if(G.state.turn !== myColor) { log('T','btap拦:非我方回合', { t:G.state.turn }); toast('还没到你的回合'); return; }
+  if(G.thinking){ log('T','btap拦:AI思考中'); return; }
+  var idx = idx0;
+  if(idx<0){ log('T','btap拦:点在外'); return; }
   var p = G.state.board[idx];
   if(G.sel!==null && G.moves.indexOf(idx)>=0){
     var mf = G.sel;
+    log('T','btap走子', { f:mf, t:idx });
     doMove(mf, idx);
     if(G.mode==='pvp') netSend({t:'move', from:mf, to:idx});
     return;
   }
-  /* 双击改子：仅人机模式。放在走子判断之后，避免把「双击落点走子」误判成改子 */
-  if(G.mode==='pve'){
-    var now = Date.now();
-    if(idx === Board.lastEditIdx && now - Board.lastEditT < 350){
-      Board.lastEditIdx = -1; Board.lastEditT = 0;
-      openPieceEditor(idx);
-      return;
-    }
-    Board.lastEditIdx = idx; Board.lastEditT = now;
-  }
+  /* 改子判定已在函数开头完成（连点同一格），此处不再重复处理。 */
   if(p && p.color===myColor){
+    if(G.sel === idx){ G.sel=null; G.moves=[]; Board.draw(); return; }
     G.sel = idx;
     G.moves = Rules.legalMoves(G.state, idx);
     log('D','选中棋子', { idx:idx, uci:Rules.idxToUci(idx), moves:G.moves.length });
@@ -3801,6 +3923,12 @@ function onBoardClick(ev){
    （此前 SwipeGuard 全屏拦截，手指横移 15px 即吞掉点击，表现为「点了不走子」）。
    这里按下→抬起位移不超过 TAP_SLOP 即判定为点击，并即时给出按下高亮。 */
 var TAP_SLOP = 24;
+/* 连点改子（原 1A 长按方案已废弃）。
+   为什么弃用长按：真机实测长按会触发浏览器自带的长按菜单（选中/复制/搜索），
+   与改子弹窗打架，用户无法完成改子；连点则完全不触发该菜单。
+   1500ms：日志实测用户两次点击间隔 1377ms / 914ms，必须覆盖到 1377 才判得成。
+   副作用可控：只有【同一格】的两次连点才算改子，走子是点两个不同格，不受影响。 */
+var DBLCLICK_MS = 1500;
 /* 按钮同样补一层触摸自判定：浏览器在手指位移超过自身容差时就不合成 click
    （实测 dx≥22 即被吞），点按会整段丢失。这里在 touchend 后等一小会儿，
    若浏览器确实没派发 click，再主动补一次，绝不会重复触发。 */
@@ -3836,43 +3964,48 @@ function bindBoardTap(cv){
     var r = cv.getBoundingClientRect();
     return [t.clientX - r.left, t.clientY - r.top];
   }
+  /* 诊断打点（1A）：按下 / 抬起 / 抖动取消 各记一条 T 码。
+     下次日志若只看见 down 没有 up，说明事件被浏览器手势（如 touch-action 引发的
+     平移/缩放）吞掉了——这正是 Firefox 全屏下「连点没反应」的怀疑方向。 */
   function onDown(e){
-    if(e.touches && e.touches.length>1) { down=false; return; }
-    var p = at(e); sx=p[0]; sy=p[1]; down=true; moved=false;
-    var idx = Board.pick(p[0], p[1]);
+    if(e.touches && e.touches.length>1) { down=false; log('T','按下 多指，忽略'); return; }
+    var p0 = at(e); sx=p0[0]; sy=p0[1]; down=true; moved=false;
+    log('T','按下', { x:Math.round(sx), y:Math.round(sy) });
+    var idx = Board.pick(p0[0], p0[1]);
     if(idx>=0 && idx!==Board.pressIdx){ Board.pressIdx=idx; Board.draw(); }
   }
   function onMove(e){
     if(!down) return;
     var p = at(e);
     if(Math.abs(p[0]-sx) > TAP_SLOP || Math.abs(p[1]-sy) > TAP_SLOP){
+      if(!moved) log('T','抬起前位移超标', { dx:Math.round(p[0]-sx), dy:Math.round(p[1]-sy) });
       moved = true;
       if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); }
     }
   }
   function onUp(e){
-    if(!down) return;
+    if(!down){ log('T','抬起 但无按下'); return; }
     down=false;
     var wasMoved = moved;
-    var idx = Board.pressIdx;
     if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); }
-    if(wasMoved) return;
-    var p = at(e);
-    if(Math.abs(p[0]-sx) > TAP_SLOP || Math.abs(p[1]-sy) > TAP_SLOP) return;
+    var pf = at(e);
+    if(wasMoved){ log('T','抬起 已判为滑动'); return; }
+    if(Math.abs(pf[0]-sx) > TAP_SLOP || Math.abs(pf[1]-sy) > TAP_SLOP){ log('T','抬起 位移超标'); return; }
+    log('T','抬起 判为点击', { x:Math.round(pf[0]), y:Math.round(pf[1]) });
     Board.lastTap = Date.now();
-    boardTapAt(p[0], p[1]);
+    boardTapAt(pf[0], pf[1]);
   }
   cv.addEventListener('touchstart', onDown, {passive:true});
   cv.addEventListener('touchmove', onMove, {passive:true});
   cv.addEventListener('touchend', onUp, {passive:true});
-  cv.addEventListener('touchcancel', function(){ down=false; if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); } }, {passive:true});
+  cv.addEventListener('touchcancel', function(){ down=false; log('T','触摸被系统取消'); if(Board.pressIdx>=0){ Board.pressIdx=-1; Board.draw(); } }, {passive:true});
   if(window.PointerEvent){
     cv.addEventListener('pointerdown', function(e){ if(e.pointerType==='mouse'){ onDown(e); } }, {passive:true});
     cv.addEventListener('pointerup', function(e){ if(e.pointerType==='mouse'){ onUp(e); } }, {passive:true});
   }
 }
 
-/* ===== 改子：人机模式下双击棋子（或空格）弹出 ===== */
+/* ===== 改子：人机模式下连点棋子（或空格）两次弹出 ===== */
 var EDIT_ROLES = ['chariot','horse','cannon','elephant','advisor','soldier'];
 function drawPieceIcon(cv, p, size){
   var dpr = window.devicePixelRatio||1;
@@ -3884,16 +4017,32 @@ function drawPieceIcon(cv, p, size){
   Board.drawPiece.call({ ctx:cx, cell:size, xy:function(){ return [size/2, size/2]; } }, 0, p);
 }
 function openPieceEditor(idx){
-  if(G.mode!=='pve' || !G.state) return;
+  if(G.mode!=='pve' || !G.state){ log('T','弹窗拦:非人机或无棋局', { i:idx }); return; }
   var p = G.state.board[idx];
-  if(p && p.role==='general'){ toast('将（帅）不能修改'); return; }
+  if(p && p.role==='general'){ log('T','弹窗拦:将帅不可改', { i:idx }); toast('将（帅）不能修改'); return; }
+  log('T','弹窗打开', { i:idx, uci:Rules.idxToUci(idx), c:p?p.color:'空' });
   var color = p ? p.color : G.humanColor;
+  /* 明暗状态：跟着这枚子本来的 faceDown 走（3A：空格新增时 p 为 null，默认明子）。
+     弹窗里「暗」只做单向开关——点一下变暗，不能靠点它变回明子。 */
+  var isDark = !!(p && p.faceDown);
   var old = document.querySelector('.editbox');
   if(old && old.parentNode) old.parentNode.remove();      /* 连开时先收掉上一个，避免遮罩叠加 */
   var host = document.getElementById('stage') || document.body;
   var mask = el('div','mask');
   var box = el('div','editbox');
-  box.appendChild(el('div','tip', (p?'修改此子 · ':'新增棋子 · ') + Rules.idxToUci(idx)));
+  /* 右上角 ✕：弹窗【唯一】的关闭方式。
+     为什么取消「点框外关闭」：日志实测 19 次弹窗打开、applyEdit 成功 0 次、无 JS 报错，
+     弹窗存活最短仅 110ms——手指第二下落点正打在遮罩上，弹窗秒关，表现成「改不了」。
+     现在点遮罩不反应，只有 ✕ 能关，弹窗想待多久待多久。 */
+  var xbtn = el('button','edx','✕');
+  xbtn.setAttribute('type','button');
+  xbtn.setAttribute('aria-label','关闭');
+  box.appendChild(xbtn);
+  /* 归属色 + 明暗 + uci 写进标题（2A）：默认色取的是棋子真实颜色，代码本没错，
+     用户看不到「我到底点中了谁」才是「点红子弹出黑方」的真正困惑来源。
+     明暗会随「暗」开关变，所以标题存引用，交给 sync() 统一改写。 */
+  var titleEl = el('div','tip','');
+  box.appendChild(titleEl);
   var r1 = el('div','edrow'), btns=[];
   EDIT_ROLES.forEach(function(role){
     var btn = el('button','pbtn');
@@ -3910,45 +4059,92 @@ function openPieceEditor(idx){
     btn.appendChild(el('span','', c==='red'?'红':'黑'));
     sw[c]=btn; r2.appendChild(btn);
   });
+  /* 「暗」：与红/黑同一行，是本方阵营的明暗开关，不是第三方阵营。
+     两条禁用规则，都来自实测：
+     · 当前已是暗子 → 暗灯亮 + 不可点（与己方颜色键同款处理），只能换阵营或换兵种。
+       想改回明子不必点它——暗子走一步就自动翻开（applyMove 里 faceDown 硬写 false），
+       所以「暗灯亮且禁用」不会把人锁死在暗状态。
+     · 当前是明子但该格无本位兵种（Rules.HOME[idx]，实测 90 格里只有 32 格有）→ 暗禁用。
+       实测这类格上的暗子合法走法恒为 0，改出来就是个走不动、只能挨吃的死子。
+     三分后每格在 320 屏仍是 82px，一个「暗」字放得下。 */
+  var swDark = el('button','swbtn');
+  swDark.appendChild(el('i','led'));
+  swDark.appendChild(el('span','','暗'));
+  sw.dark = swDark; r2.appendChild(swDark);
   box.appendChild(r2);
-  box.appendChild(el('div','tip','点棋子即生效，可连改多个；点框外关闭'));
+  var tipEl = el('div','tip','');
+  box.appendChild(tipEl);
   mask.appendChild(box);
   host.appendChild(mask);
-  function setColor(c){
-    color = c;
+  /* 三个开关 + 标题 + 底部提示的统一刷新点。凡是会改变外观的状态都走这里，
+     避免「改了状态忘了重画」这类只改一半的 bug。 */
+  function sync(){
     ['red','black'].forEach(function(k){
       var on = (k===color);
       sw[k].classList.toggle('on', on);   /* 灯亮 + 醒目边框 */
       sw[k].disabled = on;                /* 当前所属方不可再点，点另一方才切换 */
     });
+    var canDark = !!Rules.HOME[idx];
+    sw.dark.classList.toggle('on', isDark);
+    sw.dark.disabled = isDark || !canDark;
+    titleEl.textContent = (p?'修改此子 · ':'新增棋子 · ')
+      + (color==='red' ? '红方' : '黑方') + (isDark ? '暗子' : '明子') + ' · ' + Rules.idxToUci(idx);
+    /* 2A：暗灯亮时 6 个兵种图标仍画成明子样式。棋盘上的暗子本来就是灰底「?」，
+       弹窗里再全画「?」，选兵种时就完全看不出自己点的是车还是马了。 */
     btns.forEach(function(btn){
       drawPieceIcon(btn.querySelector('canvas'), { color:color, role:btn.getAttribute('data-role'), faceDown:false }, 38);
     });
+    tipEl.textContent = isDark ? '暗子按所在格位的本位兵种走，走一步自动翻开'
+      : (canDark ? '点兵种即改好，点「暗」改暗子；改完点右上角 ✕ 关闭'
+                 : '此格非暗子原位，只能设为明子');
   }
   ['red','black'].forEach(function(c){
     sw[c].addEventListener('click', function(e){
       e.stopPropagation();
       if(c===color) return;
-      setColor(c); Snd.tap();
+      color = c;      /* 4A：切阵营不动明暗——红方暗車点「黑」= 黑方暗車，实测照样能吃红子 */
+      sync(); Snd.tap();
     });
+  });
+  sw.dark.addEventListener('click', function(e){
+    e.stopPropagation();
+    if(sw.dark.disabled) return;   /* 双保险：该格无本位兵种、或当前已是暗子时点不动 */
+    isDark = true; sync(); Snd.tap();
   });
   btns.forEach(function(btn){
     btn.addEventListener('click', function(e){
       e.stopPropagation();
-      applyEdit(idx, color, btn.getAttribute('data-role'));
+      applyEdit(idx, color, btn.getAttribute('data-role'), isDark);
       Snd.tap();
     });
   });
-  mask.addEventListener('click', function(e){ if(e.target===mask) mask.remove(); });
-  setColor(color);
+  /* ✕ 是唯一关闭入口；遮罩不再响应点击（点空白/其他区域一律不关）。
+     只删遮罩【自己】：mask 的父节点是 #stage（见上面 host 的取值），
+     写 mask.parentNode.remove() 会把整个 #stage 连同棋盘、菜单一起删掉，表现为「点 ✕ 整个游戏没了」。
+     实测对照（同环境 A/B，本地同源伺服 + 真引擎）：原文点 ✕ 后 #stage 消失、canvas 归 0、body 只剩 SCRIPT；
+     改成 mask.remove() 后 #stage 与 canvas 均保留，改子结果照常生效。
+     别照抄上面 old.parentNode.remove() 的句式——那里 old 是弹窗本体，父节点才是遮罩，比这里差一级。 */
+  xbtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    mask.remove();
+    log('T','弹窗关闭:点X', { i:idx, uci:Rules.idxToUci(idx) });
+    Snd.tap();
+  });
+  sync();
 }
-function applyEdit(idx, color, role){
+function applyEdit(idx, color, role, faceDown){
   G.history.push(Rules.clone(G.state));                    /* 存档，改坏了可悔棋 */
-  G.state.board[idx] = { color:color, role:role, faceDown:false };
+  G.state.board[idx] = { color:color, role:role, faceDown:!!faceDown };
   G.sel=null; G.moves=[];
   G.viewState = Rules.viewFor(G.state, G.humanColor);
   Board.draw(); updateStatus();
-  log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role });
+  log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role, faceDown:!!faceDown });
+  /* 改完【不关窗】：用户要「改好 → 点 ✕ → 接着改别的子」。
+     自动关窗会让人看不见结果，且下一个子的连点要重新起算。
+     .mask 是全屏 72% 黑遮罩，但已取消点框外关闭，弹窗会一直等你点 ✕。 */
+  var cn = (Rules.ROLE_CN[role] && Rules.ROLE_CN[role][color]) || role;
+  toast('已改为 ' + (color === 'red' ? '红' : '黑') + (faceDown ? '暗' : '') + cn
+    + (faceDown ? '，走一步后翻开' : '') + '，点 ✕ 可继续改别的子');
 }
 function doMove(from, to){
   var legal = Rules.legalMoves(G.state, from);
