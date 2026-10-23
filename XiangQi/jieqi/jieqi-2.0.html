@@ -6,17 +6,27 @@
 <meta name="theme-color" content="#000000">
 <title>揭棋 · 模式选择</title>
 <style>
-/* 纯黑背景板 + 居中竖排厚板 3D 菜单 + 右上设置 + 右下全屏键 */
+/* 纯黑背景板 + 居中竖排厚板 3D 菜单 + 右上设置 + 左上返回 */
 :root{
-  --ink2:#e8dfc8; --line:rgba(245,239,224,.30); --acc:#ffb44a; --txt:#f5efe0; --dim:#a49e8e;
+  --ink2:#e8dfc8; --line:rgba(245,239,224,.30); --txt:#f5efe0; --dim:#a49e8e;
   --sh:3px 3px 0 rgba(0,0,0,.42);
   --hand:"LXGW WenKai","XiaWuWenKai","楷体","KaiTi","STKaiti","楷体_GB2312","Comic Sans MS",cursive;
   --r1:255px 14px 225px 16px/16px 225px 14px 255px;
   --r2:14px;
   /* 底板尺寸由 JS 冻结成 px，其余尺寸一律由它派生 */
   --plateW:100vw; --plateH:100vh;
-  --btnH:clamp(64px, calc(var(--plateH) * .105), 88px);
-  --btnGap:clamp(10px, calc(var(--plateH) * .016), 16px);
+  /* 0.5.13 曾给主页单开一个「只在旋转时重冻」的 --homeH，想让主页彻底不动。
+     实测反而更闪：主页内容钉死不动，#stage/#dock 是 fixed inset:0 会当帧跟着视口长高，
+     btnFs 又贴真屏右下角，于是「内容不动、按钮飞走、底部裂开」——错位本身成了闪。
+     0.5.14 撤销：主页三块重新吃 --plateH，与 #stage/#dock 同一个坐标系、同一次 JS 写入。 */
+  /* 0.5.15：这两个改吃宽度 --plateW，不再吃高度 --plateH。
+     原因：地址栏收放 / 进全屏只改视口高度，宽度不变。原先吃高度时，
+     动画那几十帧里按钮高和间距每帧重算一次，主页三个菜单按钮位移各不相同（实测 28/30/33）
+     且高度各 +2px —— 每帧重排，这就是主页独有、难度页（#menu 被 gaming 隐藏）没有的闪。
+     改吃宽度后，这三个值在整段动画里恒定，菜单整体平移、内部零重排。
+     系数按 822/405≈2.03 折算，竖屏下结果与原来一致；旋转时宽度真变，仍会正常自适应。 */
+  --btnH:clamp(64px, calc(var(--plateW) * .213), 88px);
+  --btnGap:clamp(10px, calc(var(--plateW) * .0325), 16px);
 
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -24,23 +34,26 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   font-family:var(--hand),-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans CJK SC",system-ui,sans-serif;
   -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none;
   -webkit-touch-callout:none;-webkit-user-drag:none}
-#stage{position:fixed;inset:0;overflow:hidden;background:#000}
+/* ★ ★ 0.5.14：#stage 不再用 inset:0。
+   原来它是 fixed inset:0，视口一变浏览器「当帧」就自己改了它；而 #plate 靠
+   --plateW/--plateH，要等 JS 的 resize 回调才追上 —— 两套坐标系每帧错开一帧，
+   地址栏收放那几十帧里每帧都错位 = 主页闪（难度页/对局页那三块 display:none 看不见）。
+   现在 #stage 也吃 --plateW/--plateH，与 #plate 同一个坐标系、同一次 JS 写入。 */
+#stage{position:fixed;left:0;top:0;width:var(--plateW,100vw);height:var(--plateH,100vh);overflow:hidden;background:#000}
 
-/* 刚体模型：整块版面放进尺寸冻结的 #plate，内部只用 px/百分比，不依赖视口。
-   #dock 只抵消「视口顶边的位移」，于是视口怎么长，底板内一切纹丝不动。 */
-#dock{position:fixed;left:0;top:0;width:100%;height:100%;z-index:45;pointer-events:none;
-  transform:translate3d(0, calc(-1 * var(--fsdy,0px)), 0);
-  will-change:transform;backface-visibility:hidden}
+/* 版面放进尺寸冻结的 #plate，内部只用 px/百分比，不依赖视口。
+   #dock 是纯定位容器（不做位移补偿）。同 #stage，改吃 --plateW/--plateH。 */
+#dock{position:fixed;left:0;top:0;width:var(--plateW,100vw);height:var(--plateH,100vh);z-index:45;pointer-events:none}
 #plate{position:absolute;left:0;top:0;width:var(--plateW);height:var(--plateH);pointer-events:none}
 
-#head{position:absolute;left:0;right:0;top:8%;padding:0 24px;text-align:center}
+#head{position:absolute;left:0;right:0;top:calc(var(--plateH) * .08);padding:0 24px;text-align:center}
 /* 游戏名：实体厚度立体（8 层递进侧壁 + 金色柔光），与按钮的厚板 3D 同一套语言。
    厚度靠 text-shadow 逐层压暗堆叠，是能看见的侧壁，不是渐变或投影。
    字号由底板高度派生（clamp 36~56px），各屏宽实测墨迹不溢出、不撞菜单。
    --txt 仍被 body / .dhead h3 / #toast 使用，未被本条改动孤立。 */
 /* 游戏名 = 按钮文字 08 款的放大版：色值、字重、字距、挤出阴影与 .mbtn b 逐项一致，
    只有 font-size 不同。原先那套 8 层垂直厚块 + 金色柔光已整体移除。 */
-#head h1{margin:0;font-size:clamp(36px, calc(var(--plateH) * .069), 56px);
+#head h1{margin:0;font-size:clamp(36px, calc(var(--plateW) * .14), 56px);
   letter-spacing:.06em;font-weight:700;color:#ffe9c2;
   text-shadow:1px 1px 0 #a8722a, 2px 2px 0 #8a5c1e, 3px 3px 0 #6c4716, 4px 4px 5px rgba(0,0,0,.6)}
 #head .sub{margin:8px 0 0;font-size:11px;line-height:1.7;color:var(--dim)}
@@ -54,8 +67,12 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
    注：320 小屏实测只下移 19px 而非 64px —— 该屏标题换行成两行(82px高)，
       改前菜单本就被"标题底+12"的上约束顶住，下移只是回到 54%，属预期。 */
 #menu{position:absolute;left:50%;transform:translate(-50%,-50%);
-  top:max(calc(8% + var(--headH,64px) + 12px + var(--menuH,352px) / 2),
-          min(54%, calc(var(--plateH) - 66px - var(--sib,0px) - 8px - var(--menuH,352px) / 2)));
+  /* 1A：原来取 plateH*.54（比例定位，全屏时只跟着走 54%），而 btnFs 是
+     bottom 锚底走 100%，两者速率差 26px —— 主页底部那条带就是这么闪的。
+     改成绝对距底（plateH - 378px），全页统一走 100%，与难度页观感一致。
+     822 高时结果与原 .54 分支几乎相同（444 vs 443.9），布局不变。 */
+  top:max(calc(var(--plateH) * .08 + var(--headH,64px) + 12px + var(--menuH,352px) / 2),
+          calc(var(--plateH) - 378px - var(--sib,0px)));
   width:min(300px, calc(var(--plateW) - 44px));
   display:flex;flex-direction:column;gap:var(--btnGap)}
 
@@ -102,7 +119,8 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   text-shadow:1px 1px 0 #a8722a,2px 2px 0 #8a5c1e,3px 3px 0 #6c4716,4px 4px 5px rgba(0,0,0,.6)}
 .mbtn span{position:relative;font-size:12px;color:var(--dim);opacity:.95}
 /* ---------- 返回大厅键：jieqi.html 的 .hall 款 ---------- */
-/* 款一字不差：120° 金渐变描边 + 双背景层(padding-box,border-box) + sheen 流光 +
+/* 款一字不差：120° 金渐变描边 + 双背景层(padding-box,border-box) +（0.5.20 起 sheen 流光改用
+   background-position 2D 动画，不再用 translate3d）+
    金色箭头（按下左移 4px）+ #1d1710 深底。尺寸拉到与另外三键一致（300x81）。
    三处适配（都是"尺寸/观感"，不动款）：
    1) max-width:280px 不抄 —— 会变窄 20px，本页保持 300
@@ -128,16 +146,38 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   linear-gradient(120deg,#7a5a2a,#e8c274,#fff0c4,#e8c274,#7a5a2a)}
 .hall .d{display:block;font-size:12px;font-weight:400;color:#9d8a6c;margin-top:2px}
 
+/* 0.5.20：sheen 流光回来了，但彻底换掉驱动方式 —— 不再用 translate3d。
+   背景：0.5.19 把整个流光删了，因为它是全应用唯一的 infinite 动画（3.5s 周期），
+   而且 translate3d 会起一个常驻 GPU 合成层。难度页 / 对局页因为 #stage.gaming #menu
+   {display:none} 把整个菜单藏了、动画跟着停，实测运行中动画数 = 0，只有主页在跑。
+   全屏切换时浏览器要重建合成树，这个还在跑的合成层会让 Android 沉浸式模式反复退出
+   又进入 —— 表现就是浏览器自己的底部白条出来又消失、重复闪几次（0.5.19 删掉后确认消失）。
+
+   0.5.20 的做法：流光改成伪元素 ::after + 只动 background-position。
+   background-position 是纯 2D 绘制属性，不会新建合成层（浏览器没有可为它提层的属性），
+   所以"常驻合成层"这个触发条件没有了；流光效果保留，仍是 3.5s 周期。
+   注意：0.5.20 上线后用户实测「主页还是会闪」，说明上面这个假设不成立 ——
+   触发条件是"页面持续有视觉活动"，不是"存在合成层"。0.5.22 据此改成有限次数。 */
+/* 0.5.23：流光改回 0.5.18 的原版做法 —— 独立的 <i class="sheen"> 斜条 +
+   translate3d 横扫（0.5.20~0.5.22 用的 ::after + background-position 是
+   我自己发明的，用户看不出是流光，像左边一块黄斑在闪，改回原版）。
+   顺序必须是 translate3d 在 rotate 之前：CSS 的 transform 函数从右往左作用于点，
+   写成 rotate(...) translate(...) 会把平移方向也旋转 18°，实测垂直位移 +156px
+   （按钮高才 81px），流光斜着掉出按钮 —— 就是「走到一半往下掉」。
+   次数仍是 3（约 10 秒）而不是 0.5.18 的 infinite：用户日志 0.5.21 实测 60 条
+   全屏帧里 plateH=vvH=innerH 全程相等、btnFsTop 稳定、sib 恒 0，唯一异常项
+   是 anim:1；而 0.5.19（anim=0）实测不闪。单变量对照说明触发条件是「页面持续
+   有视觉活动」本身，所以让它跑完自己停才是正解。 */
 .hall .sheen{position:absolute;top:-60%;left:-40%;width:40%;height:220%;
   pointer-events:none;
   background:linear-gradient(90deg,rgba(255,255,255,0),rgba(255,240,200,.28),rgba(255,255,255,0));
-  transform:translate3d(0,0,0) rotate(18deg);animation:hallSheen 3.5s ease-in-out infinite}
-/* 原版：0%{left:-40%} 55%{left:130%} 100%{left:130%}，位移 170% 按钮宽且纯水平。
-   用 transform 走合成层（原版 left 动画实测 1.2 秒 78 次重排），等价位移 425%
-   （sheen 自身宽 40%，425%×40% = 170%）。
-   顺序必须是 translate3d 在 rotate 之前：CSS 的 transform 函数从右往左作用于点，
-   写成 rotate(...) translate(...) 会把平移方向也旋转 18°，实测垂直位移 +156px
-   （按钮高才 81px），流光斜着掉出按钮——就是"走到一半往下掉"。 */
+  transform:translate3d(0,0,0) rotate(18deg);animation:hallSheen 3.5s ease-in-out 3}
+/* 0.5.23 双保险第二道：全屏切换那一秒彻底消失（display:none，不是 paused ——
+   paused 只停进度，元素还在渲染树里、还在参与合成）。1 秒后由 JS 摘掉本类
+   并让动画从头左→右跑，避开切换瞬间合成树重建的那段拉锯。 */
+#stage.sheen-off .hall .sheen{display:none}
+/* 保证文字压在流光之上 */
+.hall b,.hall span{position:relative;z-index:1}
 @keyframes hallSheen{
   0%{transform:translate3d(0,0,0) rotate(18deg)}
   55%{transform:translate3d(425%,0,0) rotate(18deg)}
@@ -147,28 +187,89 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 /* 清漆高光是木纹按钮的，hall 上会把它洗成棕灰色：关掉 */
 .hall::before{display:none}
 
-/* 三个固定角/行元素：位置只由冻结的安全区决定 */
-#btnSet,#btnFs{position:absolute;pointer-events:auto;width:44px;height:44px;border-radius:var(--r2);z-index:50;
+/* 四个固定角/行元素：位置只由冻结的安全区决定 */
+#btnSet,#btnBackTop{position:absolute;pointer-events:auto;width:44px;height:44px;border-radius:var(--r2);z-index:50;
   background:rgba(0,0,0,.5);border:2px solid var(--line);color:var(--ink2);
   font-size:17px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;box-shadow:var(--sh)}
-/* 齿轮：换成 jieqi.html 的 .gear 款（34x34 正圆 · #3c2f22 底 · #55432f 金棕边 · #e8b872 金色），
-   位置沿用本页冻结安全区（不用 env()，否则会破坏全屏锚定）。
-   ::after 把触摸热区撑到 44x44 —— 34 小于触摸目标建议最小值，手指容易落空。 */
-#btnSet{top:calc(22px + var(--sit,0px));right:calc(22px + var(--sir,0px));
-  width:34px;height:34px;border-radius:50%;
-  background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:17px;
+/* 齿轮：与顶栏里那颗 ⚙ 完全同款同尺寸同位置（38x38 · 圆角11 · #3c2f22 底 · #55432f 金棕边 · #e8b872 金色）。
+   以前是 34x34 正圆、距上/距右 22px，跟 netbar/topbar 里的 38x38 圆角11 对不上，肉眼能看出两种按钮。
+   现在 offset 取 6/10，与 .topbar 的 padding（上 6 / 右 10）一致，主页上它正好落在顶栏 ⚙ 的同一处。
+   ::after 把触摸热区撑到 48x48 —— 38 略小于触摸目标建议最小值，手指容易落空。
+   top 取 0.5：实测原来 top:6 时按钮中心在 25，而「人机 · 普通」标题文字中心在 19.5，肉眼看着低半头；
+   改成 0.5 后两者中心都是 19.5，六档屏宽（320/360/390/405/430/480）实测失配全部归 0。
+   安全区必须吃实时 env() 而非冻结的 --sit：顶栏吃的是 env()，两键若吃 --sit，
+   系统栏高度一变（地址栏收放、刘海机型）就会错开（实测失配可达 29.5px）。
+   两边同吃 env() 后实测 env=0/24/47/119/120 五档下，标题中心与两键中心始终重合（失配 0）。 */
+#btnSet{top:calc(0.5px + env(safe-area-inset-top,0px));right:calc(10px + var(--sir,0px));
+  width:38px;height:38px;border-radius:11px;
+  background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:20px;
   box-shadow:0 2px 6px rgba(0,0,0,.5)}
-#btnSet::after{content:'';position:absolute;left:-5px;top:-5px;right:-5px;bottom:-5px;border-radius:50%}
+#btnSet::after{content:'';position:absolute;left:-5px;top:-5px;right:-5px;bottom:-5px;border-radius:13px}
 #btnSet:active{background:#55432f;transform:translate(2px,2px);
   box-shadow:1px 1px 0 rgba(0,0,0,.38);border-width:2.5px}
-#btnFs{right:calc(22px + var(--sir,0px));bottom:calc(22px + var(--sib,0px))}
-#btnFs:active{transform:translate(2px,2px);box-shadow:1px 1px 0 rgba(0,0,0,.38);border-width:2.5px}
-#btnFs.on{background:rgba(255,180,74,.22);border-color:var(--acc);color:#ffe9c2}
-/* 版本号宽度：左 24px；右侧留 70px 给全屏键（键本身 right:22 + 44 宽，即占右侧 66px）。
+/* 返回键：与 ⚙ 完全同款（38x38 · 圆角11 · #3c2f22 底 · #55432f 边），只是挂在左上角（left:10）。
+   全游戏只有这一枚返回键，netbar/topbar 里各自那枚 ‹ 已全部删除。
+   默认隐藏：主页自己有「← 返回游戏大厅」大按钮（#btnBack），不该再冒出第二枚返回键；
+   有顶栏的页面（netbar 三个设置页 + topbar 对局页）才显示——与顶栏左侧那个 38px 透明占位对齐。 */
+/* top 与 #btnSet 同为 0.5 + 实时 env()：两键中心始终落在标题文字中心，与难度名同一高度。 */
+#btnBackTop{top:calc(0.5px + env(safe-area-inset-top,0px));left:calc(10px + var(--sil,0px));
+  width:38px;height:38px;border-radius:11px;
+  background:#3c2f22;border:1px solid #55432f;color:#f2e8da;font-size:20px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);display:none}
+#stage:has(.netbar) #btnBackTop,#stage:has(.topbar) #btnBackTop{display:flex}
+#btnBackTop::after{content:'';position:absolute;left:-5px;top:-5px;right:-5px;bottom:-5px;border-radius:13px}
+#btnBackTop:active{background:#55432f;transform:scale(.94)}
+/* 全屏键：照抄红白机的「真屏右下角」按位。
+   红白机实测（竖屏 386x844 持机）：按钮中心距屏幕右 39px、距屏幕底 44px。
+   它的 CSS 是 right:22 / top:17，靠 #stage 的 rotate(90deg) 把「游戏内右上角」
+   送到「真实屏幕右下角」——手指按到的始终是屏幕右下角。
+   我们竖版不旋转，所以直接写 right/bottom 贴真屏右下角，等价。
+   ★ 0.5.25：bottom 从 16 改成 109 —— 用户要求按钮移到对局「认输」按钮正上方、
+     与「红失／黑失」那一排对齐。实测 bottombar 高度在三档屏宽下恒为 109px
+     （405/386/320 均是 bottombar.top = 视口高 - 109），所以 109 恰好让按钮底边
+     贴在 bottombar 顶边，也就是贴在 .caps（红失黑失那排）的底边上。
+     · .caps 内容实测只到 x=112（左对齐），按钮在 x=339..383，不会盖住文字。
+     · scorebar 内的文字（"准备中…"/"单线程 · 1 线程"）实测最右到 x=266，
+       按钮最左 320（320 档 x=254），水平不冲突。
+     · 认输按钮 top=722，按钮 bottom=713，中间还留 9px，不压住。
+   ★ 旧值 16 是贴真屏右下角（按钮 762..806），会盖在 bottombar 上，
+     实测与「认输」垂直重叠 6px，故弃用。
+   ★ 挂 #dock 直属，不能放进 #plate：#plate 高度是启动时冻结的 --plateH，
+     进全屏不重冻，实测会把按钮算到屏幕外（Chrome/122 那台 y=541 而屏高只有 331）。
+   ★ pointer-events:auto 不能省（红白机 61 行同样这么写）：#dock 是 pointer-events:none
+     的定位容器，子元素不显式声明 auto 就完全收不到点击。0.5.9/0.5.10 漏了这一句，
+     实测 getComputedStyle(btnFs).pointerEvents === 'none'，
+     elementFromPoint(按钮中心) 命中的是 bottombar —— 按钮看得见但点不动，
+     用户日志里「点全屏键无任何记录、点设置键却有反应」正是这个差别
+     （#btnSet/#btnBackTop 在 149 行写了 auto，所以它们正常）。 */
+#btnFs{position:absolute;z-index:45;pointer-events:auto;
+  right:calc(22px + env(safe-area-inset-right,0px));
+  bottom:calc(109px + env(safe-area-inset-bottom,0px));
+  width:44px;height:44px;border-radius:11px;
+  background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:17px;
+  box-shadow:0 2px 6px rgba(0,0,0,.5);
+  display:flex;align-items:center;justify-content:center;padding:0;
+  -webkit-tap-highlight-color:transparent}
+#btnFs:active{background:#55432f;transform:scale(.94)}
+#btnFs.on{background:#55432f;border-color:#e8b872;color:#ffd88a}
+/* 版本号宽度：左 24px、右 70px。
    原先左右各 80px 只剩 160px 可用宽，装不下「当前引擎：8核多线程 · Hash 256MB · 版本号v1.5.0」。
-   改成左 24 / 右 70 后：390 屏可用 296px、320 屏 226px；再给 ≤340px 小屏降到 9px（最长文案 220px），
-   六种文案都不截断，且 #ver 右边界（250）不与全屏键左边界（254）重叠。 */
-#ver{position:absolute;left:24px;right:70px;bottom:calc(22px + var(--sib,0px));height:44px;
+   右边这 70px 是给右下角全屏键让位（键宽 44 + 距右 22 + 留白 4）：
+   全屏键 y 区间与 #ver 重叠，若右侧只留 24px 会被压住 42×38px。
+   留 70px 后实测：386 屏可用 292px、405 屏 311px、320 屏 226px，六种文案都不截断。 */
+/* 0.5.16：版本号从"底部那条带"里搬出来，改挂在菜单正下方。
+   原因：底部那条带（原浏览器工具栏位置）全屏时会闪，而难度页/棋盘页不闪 ——
+   实测差别就是 #stage.gaming 把 #ver 隐藏了（319 行），那条带里只剩 #btnFs 一个元素。
+   主页多出 #ver：它原来用 top:plateH-66（跟着底板整跳 58px），
+   与 #btnFs 的 bottom:16+env 虽同为底板驱动，但它是这条带里唯一的大面积可见内容，
+   于是"闪"就显现在这一段。搬到菜单下方后，
+   底部那条带与难度页结构一致（只剩全屏键），版本号仍可见。
+   表达式 = 菜单中心 top（与 #menu 同一个 max/min 式子）+ 菜单半高 + 14px 间距，
+   因此版本号与菜单同速率移动（ΔplateH×.54），不再与底部那条带错开。 */
+#ver{position:absolute;left:24px;right:24px;height:44px;
+  top:calc(max(calc(var(--plateH) * .08 + var(--headH,64px) + 12px + var(--menuH,352px) / 2),
+               calc(var(--plateH) - 378px - var(--sib,0px)))
+           + var(--menuH,352px) / 2 + 14px);
   line-height:44px;text-align:center;font-size:10px;color:var(--dim);
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
 @media (max-width:340px){ #ver{font-size:9px} }
@@ -178,9 +279,9 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 #ver b{pointer-events:auto;display:inline-block;padding:0 12px;font-weight:400}
 
 /* ============ 设置抽屉：款式照抄 jieqi.html 的遮罩 + 右侧抽屉 ============ */
-/* 关键：#mask 与 #panel 已从 #plate 内移到 #stage 下（#dock 平级）。
-   #dock 带 transform（全屏顶边补偿），fixed 元素放进去会以 dock 为包含块而错位；
-   放 #stage 下才能解析到视口，且全屏时 #stage 是 fullscreen 元素，抽屉照常可见。 */
+/* 关键：#mask 与 #panel 挂在 #stage 下（与 #dock 平级），不放 #plate 内。
+   fixed 元素若放进带 transform 的容器会以该容器为包含块而错位，
+   放 #stage 下才能正确解析到视口。 */
 #mask{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:60;opacity:0;pointer-events:none;
   transition:opacity .22s;touch-action:none}
 #mask.open{opacity:1;pointer-events:auto}
@@ -197,16 +298,22 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
   border-left:1px solid #55432f;z-index:61;transform:translateX(100%);transition:transform .24s ease;
   display:flex;flex-direction:column;overflow:hidden;touch-action:pan-y}
 #panel.open{transform:translateX(0)}
+/* 0.5.17：padding-top 改用实时 env(safe-area-inset-top)，不再用启动冻结的 --sit。
+   --sit 是 freezeInsets() 在启动那一刻探测一次就锁死的值。带着全屏状态打开页面时
+   env() 为 0（浏览器工具栏已被隐藏），--sit 就冻成 0；等退出全屏、工具栏回来，
+   面板头部仍按 0 算，结果顶上被系统状态栏吃掉 —— 表现为「日志和 ✕ 点不到」。
+   顶栏 .netbar 一直用的是实时 env()，所以只有面板出问题。这里改成与顶栏一致。 */
 .dhead{flex:0 0 auto;position:relative;display:flex;align-items:center;gap:8px;
-  padding:calc(12px + var(--sit,0px)) 14px 12px;border-bottom:1px solid #3a2e22}
+  padding:calc(12px + env(safe-area-inset-top,0px)) 14px 12px;border-bottom:1px solid #3a2e22}
 .dhead h3{margin:0;font-size:16px;color:#e8b872;flex:1;font-weight:600}
 #btnDClose{flex:0 0 38px;width:38px;height:32px;padding:0;font-size:15px;font-family:inherit;
   border-radius:8px;border:1px solid #55432f;background:#2b2318;color:#f2e8da}
 #btnDClose:active{background:#3d3022}
-/* 诊断日志按钮原在 .dfoot 最底部，浏览器 UI 一遮挡就点不到；移到标题栏水平居中（.dhead 已 relative）。
-   绝对定位到标题栏正中：左边留够距离，点 ✕ 不会误触；也不再匹配 .dfoot button（那条是 flex:1 会撑满）。 */
-#btnLog{position:absolute;left:50%;top:calc(12px + var(--sit,0px));transform:translateX(-50%);
-  height:32px;padding:0 10px;font-size:12px;font-family:inherit;
+/* 0.5.17：诊断日志按钮改回 .dbody 内容区的普通按钮（0.1.9 原件起它一直 .dhead 绝对定位）。
+   绝对定位在 .dhead 正中，头部一旦被系统状态栏压住，它就整个跟着被推出可视区 ——
+   这就是「偶发点不到」：日志1 带着全屏态打开（ENV h879）被挡，日志2 正常态（ENV h821）能按。
+   放进 .dbody 后它随内容滚动，永远在可点区域里，不再受头部留白影响。 */
+#btnLog{display:block;width:100%;min-height:38px;padding:8px 12px;font-size:13px;font-family:inherit;
   border-radius:8px;border:1px solid #55432f;background:#2b2318;color:#f2e8da;white-space:nowrap}
 #btnLog:active{background:#3d3022}
 .dbody{flex:1 1 auto;overflow-y:auto;padding:12px 14px calc(20px + var(--sib,0px));
@@ -219,7 +326,6 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .dit .tt{flex:1;min-width:0}
 .dit .tt b{display:block;font-size:14px;font-weight:600;color:#f2e8da}
 .dit .tt span{display:block;font-size:11px;color:#9c8a76;margin-top:2px;line-height:1.45}
-.dit-hint{display:block;margin-top:6px;font-size:11px;color:#8a7965;line-height:1.5}
 .sw{flex:0 0 46px;width:46px;height:26px;border-radius:13px;background:#4a3c2c;position:relative;
   transition:background .2s;border:1px solid #5d4a35;pointer-events:auto}
 .sw.on{background:#a8642a;border-color:#c8813c}
@@ -255,14 +361,14 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 #stage *{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 
 /* ==================== 游戏页：样式照抄 jieqi.html ==================== */
-/* 覆盖层：与菜单平级，各自独立布局。菜单靠冻结底板保证全屏不变形，
+/* 覆盖层：与菜单平级，各自独立布局。菜单靠冻结底板保证尺寸稳定，
    对局页是 canvas + 流式布局需跟随屏幕，硬塞进底板会把棋盘压扁。 */
 #app{position:absolute;inset:0;z-index:40;display:none;flex-direction:column;
   touch-action:pan-y;overscroll-behavior-x:contain;background:#14100c}
 #app.on{display:flex}
 #app{font-family:system-ui,-apple-system,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif}
 /* #dock(45) 高于 #app(40)：菜单天生浮在游戏页之上。
-   进游戏页时把菜单内容藏掉，只留齿轮与全屏键（它们要常驻，故留在 dock 内）。 */
+   进游戏页时把菜单内容藏掉，只留齿轮与返回键（它们要常驻，故留在 dock 内）。 */
 #stage.gaming #head, #stage.gaming #menu, #stage.gaming #ver{display:none}
 .page{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;gap:14px;min-height:0;overflow-y:auto}
 .sub{font-size:13px;color:#9c8a76;margin-bottom:22px;text-align:center;line-height:1.7}
@@ -273,10 +379,23 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .opt .ic{flex:0 0 20px;font-size:15px;text-align:center;line-height:1}
 .opt .t{font-size:14px;color:#f2e8da}
 .opt .d2{font-size:11px;color:#9c8a76;margin-left:auto}
-.netbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(8px + env(safe-area-inset-top)) 8px 8px; background:#1e1812;border-bottom:1px solid #3a2e22}
-.netbar .bk{flex:0 0 38px;width:38px;height:38px;border-radius:11px;border:1px solid #55432f; background:#3c2f22;color:#f2e8da;font-size:20px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0}
-.netbar .tt{flex:1;text-align:center;font-size:15px;font-weight:700;letter-spacing:3px;color:#f2e8da}
-.netbar .ph{flex:0 0 38px}
+/* ===== 全站顶栏：一条顶栏、两处占位，按钮一个都不放 =====
+   顶栏里曾经各自带一枚 ‹ 和一枚 ⚙（netbar 的 .bk、topbar 的 .bk/.set），
+   于是全游戏出现 3 枚设置键、2 枚返回键，还得靠 :has() 互相隐藏，切页时就会「消失又冒出来」。
+   现在顶栏只负责「布局」：左 38px 占位 + 居中标题 + 右 38px 占位，
+   两个占位恰好是浮层 #btnBackTop / #btnSet 的位置（top6 / left10 / right10，同为 38x38 圆角11）。
+   按钮本体全游戏各只有一枚，一直在 #dock 上浮着，不随页面切换消失。 */
+/* 顶栏 padding-top 必须用实时 env(safe-area-inset-top)，不能用冻结的 var(--sit)：
+   0.3.9 曾用 --sit（启动时冻结，QQ 上实测为 0），等于把约 119px 的避让量抹掉，
+   难度名被拉到贴顶（日志：off_diff ev=119，而 btnSet 被点到 y=25），用户反馈「不好按、看不清难度」。
+   改回实时 env() 后难度名回到它原本的位置。 */
+.netbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:#1e1812;border-bottom:1px solid #3a2e22}
+.netbar .ph,.topbar .ph{flex:0 0 38px;height:0}
+/* 标题统一成对局页那套（16px/600/字距1px），原 .tt 的 15px/700/字距3px 作废。
+   两侧各 38px 占位后，390 屏可用 278px、320 屏 208px，故一律加省略号兜底。 */
+.netbar .tt,.topbar h1{flex:1 1 auto;min-width:0;margin:0;text-align:center;font-size:16px;font-weight:600;
+  letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.netbar .tt{color:#f2e8da}
 .btn{background:#3c2f22;color:#f2e8da;border:1px solid #55432f;border-radius:8px;padding:9px 12px;flex:1 1 auto;min-width:64px}
 /* 旋转按钮独占第二行、与上面四个同宽并靠左。
    max-width 会连 flex base size 一起收缩，导致它仍被挤在第一排，
@@ -286,23 +405,34 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .bottombar .btn.s2{flex:1 1 0;min-width:0;padding:9px 4px;font-size:13px}
 .bottombar .btn.s2[disabled]{opacity:.45}
 .btn.pri{background:#a8642a;border-color:#c8813c;color:#fff;font-weight:600}
-.btn.sm{padding:7px 10px;font-size:13px}
 .topbar{flex:0 0 auto;display:flex;align-items:center;gap:8px;padding:calc(6px + env(safe-area-inset-top)) 10px 6px; background:#1e1812;border-bottom:1px solid #3a2e22}
-.topbar h1{font-size:16px;margin:0;font-weight:600;letter-spacing:1px}
+/* 按钮与标题的样式已在上面 .netbar 段与 netbar/topbar 共用，此处不再重复写第二份。
+   注意这里【不再】写任何隐藏 #btnSet / #btnBackTop 的规则——它们要常驻在所有页面之上
+   （#dock z-index 45 高于 #app z-index 40，天然浮在游戏页上面）。
+   之前写的 #stage:has(...) #btnSet{display:none} 正是「切页时设置键消失一下又冒出来」的元凶，已删除。 */
 .mid{flex:1 1 auto;display:flex;flex-direction:column;min-height:0;overflow:hidden}
 .status{flex:0 0 auto;text-align:center;padding:5px 10px;font-size:13px;color:#d9c4a3;background:#1a1410;min-height:26px}
 .boardwrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:6px;min-height:0}
 .scorebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px; padding:5px 10px;font-size:12px;background:#1a1410;border-top:1px solid #332920}
 .caps{flex:0 0 auto;display:flex;gap:10px;padding:4px 10px;font-size:11px;color:#9c8a76;align-items:center;flex-wrap:wrap;background:#1a1410}
 .caps .grp{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
-.pc{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%; font-size:11px;border:1px solid #6b5233;background:#e8d5b0;color:#8b1a1a;line-height:1}
-.pc.bk{color:#1a1a1a}
-.pc.dk{background:#4a4038;color:#c9b8a0;border-color:#6a5c50}
 .bottombar{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:#1e1812;border-top:1px solid #3a2e22}
 .mask{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:70}
+/* 0.5.29：改子窗专用——背景不加暗。
+   72% 黑遮罩会把刚翻开的那枚子一起压暗，「询问」自动弹窗时用户根本看不清翻出了什么，
+   而这个弹窗的全部意义就是让人看清并改它。透明后遮罩照样铺满（仍拦截点击、防误点棋盘），
+   只是不挡视线；弹窗本体可拖（0.5.28），拖开即可看全盘。
+   补一圈阴影：没有黑底衬托后，弹窗边缘会和深色棋盘糊在一起，看不出哪块是浮层。 */
+.mask.clear{background:transparent}
+.mask.clear .editbox{box-shadow:0 10px 34px rgba(0,0,0,.62)}
 .modal{width:100%;max-width:320px;background:#231b14;border:1px solid #55432f;border-radius:14px;padding:18px; max-height:84vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
 .modal h3{margin:0 0 12px;font-size:16px;color:#e8b872}
-.modal .row{margin-top:12px}
+/* 0.5.26：按钮行改 flex —— 原来只有 margin-top，两个按钮是行内块，从左边挨着排过去，
+   右半边整片留白，看着就是「偏左」。现在 flex + gap 平分整行，左右对称。
+   .btn 自带 flex:1 1 auto / min-width:64px，两枚时各占一半（内容宽 284 - gap 8 = 276，各 138）；
+   infoBox 只有一枚「知道了」，flex:1 会撑满 284px 太宽，用 max-width 收一刀再由 justify-content 居中。 */
+.modal .row{margin-top:12px;display:flex;gap:8px;justify-content:center}
+.modal .row .btn{max-width:160px}
 /* 日志弹窗：正方形（边长 min(92vw,340px)），左右占满、上下居中。
    刻意不做右上角 ✕——框外上下都留 130px+ 可点区域，点遮罩即关，省一套关闭按钮代码。 */
 .logbox{width:min(86vw,340px);height:min(86vw,340px);flex:0 0 auto;background:#231b14;
@@ -323,6 +453,11 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
    右上角 ✕ 是唯一关闭方式——点遮罩不关，避免手指第二下落点在黑边上把弹窗秒关。 */
 .editbox{position:relative;width:min(90vw,340px);flex:0 0 auto;background:#231b14;border:1px solid #55432f;
   border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
+/* 0.5.28：改子弹窗可拖动。touch-action:none 让手指横拖时浏览器不抢去做滚动/缩放，
+   user-select:none 免得拖出一串文字选中蓝块。兵种键和开关照常可点 —— 拖动起点落在 button 上
+   （含兵种键里的 canvas，它的父级就是 .pbtn）一律不启动拖动，见 bindEditDrag 的 ok()。 */
+.editbox{touch-action:none;-webkit-user-select:none;user-select:none;cursor:move}
+.editbox.dragging{cursor:grabbing}
 /* ✕ 绝对定位到右上角，不占 flex 流，标题因此能正常居中。
    44×44 是移动端可点最小尺寸，方向键/拇指都够得着。
    负值把 ✕ 挪出卡片（骑在圆角上）：实测原来 top:6/right:6 时，44 高的方块比 17 高的标题多出 21px，
@@ -356,7 +491,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 .modal{font-family:inherit}
 .btn{font-family:inherit;font-size:14px;cursor:pointer}
 .btn.pri{font-size:15px}
-.opt .t{font-weight:600} .boardwrap{position:relative} .readybtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;flex:0 0 auto;min-width:112px;padding:10px 18px;font-size:16px} .readybtn.on{background:#4b3a22;color:#c9b28a} .mput{width:100%;box-sizing:border-box;padding:9px 10px;background:#14100b;border:1px solid #55432f;border-radius:8px;color:#ffe9c2;font-size:15px;font-family:inherit;margin:2px 0 6px;outline:none} #toast.err{left:50%;top:46%;transform:translate(-50%,-50%);background:rgba(120,20,20,.94);color:#ff8b8b;border:1px solid #ff6b6b;font-size:16px;font-weight:700;padding:12px 20px} .row2{display:flex;gap:8px;margin:6px 0 2px} .row2>.btn{flex:1;min-width:0} .hint{font-size:12px;color:#8d7a63;line-height:1.6;margin:4px 2px}
+.opt .t{font-weight:600} .boardwrap{position:relative} .readybtn{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);z-index:6;flex:0 0 auto;min-width:112px;padding:10px 18px;font-size:16px} .readybtn.on{background:#4b3a22;color:#c9b28a} .mput{width:100%;box-sizing:border-box;padding:9px 10px;background:#14100b;border:1px solid #55432f;border-radius:8px;color:#ffe9c2;font-size:15px;font-family:inherit;margin:2px 0 6px;outline:none} .row2{display:flex;gap:8px;margin:6px 0 2px} .row2>.btn{flex:1;min-width:0} .hint{font-size:12px;color:#8d7a63;line-height:1.6;margin:4px 2px}
 </style>
 
 <!-- 启用跨源隔离（COOP/COEP），让 WebAssembly 多线程生效。
@@ -457,17 +592,23 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
         <button class="mbtn hall" id="btnBack"><i class="sheen"></i><b><span class="arw">←</span>返回游戏大厅</b><span class="d">返回上级 · 选择其他游戏</span></button>
           </div>
       <div id="ver"></div>
+      <button id="btnBackTop" title="返回" aria-label="返回">‹</button>
       <button id="btnSet" title="设置">⚙</button>
-      <button id="btnFs" title="进入全屏">⛶</button>
-
     </div>
+    <!-- 全屏键必须挂在 #dock 直属，不能放进 #plate：
+         #plate 的高度是启动时冻结的 --plateH，进全屏期间不重冻（layout() 的 isFs 守卫），
+         bottom 按冻结高度算会把按钮算到屏幕外。实测 Chrome/122 那台：全屏后视口变 837x331，
+         按钮被算到 y=541，屏幕只有 331 高，整个掉出屏幕、看不见也点不到。
+         #dock 是 fixed inset:0，随视口走，按钮永远落在真屏右下角。 -->
+    <button id="btnFs" title="进入全屏">⛶</button>
   </div>
   <!-- 设置抽屉：必须挂在 #stage 下（与 #dock 平级），不能留在 #plate 内。
        #dock 带 transform，fixed 元素放进去会以 dock 为包含块而错位。 -->
   <div id="mask"></div>
   <div id="panel">
-    <div class="dhead"><h3>设置</h3><button id="btnLog" type="button">诊断日志</button><button id="btnDClose" type="button">✕</button></div>
+    <div class="dhead"><h3>设置</h3><button id="btnDClose" type="button">✕</button></div>
     <div class="dbody">
+      <button id="btnLog" type="button">诊断日志</button>
       <div class="dgrp">
         <h4>音效</h4>
         <div class="dit"><div class="tt"><b>游戏音效</b><span>落子、翻子、吃子、将军、胜负等实时合成音</span></div>
@@ -518,7 +659,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.3.1';
+const JIEQI_VER = '0.5.29';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -563,8 +704,7 @@ const LOG = {
     return ['JQ|' + JIEQI_VER,
       'ENV|w' + innerWidth + ' h' + innerHeight + ' scr' + screen.width + 'x' + screen.height +
         ' dpr' + d + ' vv' + (visualViewport ? Math.round(visualViewport.height) : 0),
-      'CAP|fs' + (document.fullscreenEnabled ? 1 : 0) + ' wake' + (n.wakeLock ? 1 : 0) +
-        ' ori' + (screen.orientation ? 1 : 0) +
+      'CAP|ori' + (screen.orientation ? 1 : 0) +
         ' clip' + (n.clipboard ? 1 : 0) + ' tz' + (-new Date().getTimezoneOffset() / 60),
       'UA|' + (n.userAgent.match(/(Chrome|MicroMessenger|QQ|XiaoMi|Huawei|Safari|Firefox)\/[\d.]+/g) || ['?']).join(','),
       'T0|' + this.t0].join('\n');
@@ -576,7 +716,7 @@ const LOG = {
   },
   dump() {
     const tail = '\n--\nDROP|' + this.dropped + ' TOTAL|' + (this.buf.length + this.dropped) +
-      '\nCODES|I初始化 F全屏 T触摸 P面板 R滑块 L日志 E错误 V视口 M菜单 A帧 W警告 N跳转';
+      '\nCODES|I初始化 F全屏 T触摸 P面板 R滑块 L日志 E错误 V视口 M菜单 W警告 N跳转';
     return this.env() + '\n' + this.buf.join('\n') + tail;
   },
   copy() {
@@ -611,12 +751,28 @@ const LOG = {
   },
   reset() { this.buf.length = 0; this.dropped = 0; this.t0 = Date.now(); this.add('L', 'reset'); }
 };
-window.onerror = (m, s, l, c, e) => LOG.add('E', 'msg=' + String(m).slice(0, 90) + ' @' + l + ':' + c);
+/* 原来只记 @行:列。跨域脚本（引擎 worker / 外链 js）的错被浏览器遮蔽成
+   "Script error. @0:0"，看不出是谁报的。补上 s(源文件) 与 e.stack，
+   并单开一个捕获阶段监听抓 img/script/link 的资源加载失败。 */
+window.onerror = (m, s, l, c, e) => LOG.add('E', 'msg=' + String(m).slice(0, 90) + ' @' + s + ':' + l + ':' + c
+  + (e && e.stack ? ' | stack=' + String(e.stack).slice(0, 200) : ''));
+window.addEventListener('error', (ev) => {
+  try{
+    var t = ev.target;
+    if(t && t !== window && (t.tagName === 'IMG' || t.tagName === 'SCRIPT' || t.tagName === 'LINK')){
+      LOG.add('E', '资源加载失败 ' + t.tagName + ' ' + String(t.src || t.href || '').slice(0, 120));
+    }
+  }catch(e){}
+}, true);
 window.addEventListener('unhandledrejection', (e) => LOG.add('E', 'rej=' + String(e.reason).slice(0, 90)));
 
 const UI = {
-  // _fsdyCur 必须显式初始化为 0：否则 rAF 首帧未跑时日志会打出 undefined
-  _fsBusy: 0, _fsAt: 0, _fsArmed: false, _orientLocked: 0, wakeLock: null, _frames: 0, _fsdyCur: 0,
+  // 上一个非 0 视口尺寸，供 viewport() 在回退全为 0 时兜底
+  _lastVw: 0, _lastVh: 0,
+  /* 全屏节流三件套（照抄红白机 toggleFs）：
+     _fsBusy 防并发、_fsAt 记上次请求时间（450ms 内重复点击直接忽略）、
+     _fsArmed 标记「已挂一次性触摸补发监听」。 */
+  _fsBusy: 0, _fsAt: 0, _fsArmed: false,
 
   init() {
     this._preloadMsg = null;
@@ -628,14 +784,19 @@ const UI = {
     this.bind();
     window.addEventListener('resize', () => this.layout());
     window.addEventListener('orientationchange', () => setTimeout(() => this.layout(), 250));
+    /* 全屏状态变化（含系统返回键退出）→ 刷新按钮文案 + 立刻重排。
+       部分浏览器（红白机注释点名 X 浏览器 / QQ 浏览器）进入全屏后不上报窗口尺寸
+       变化，于是元素一直按全屏前的尺寸摆 —— 整片错位。现在收到事件就重排，
+       再用 100/300/600ms 补三次兜住尺寸滞后（红白机 7707-7713 行同款）。 */
+    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange'].forEach(ev => {
+      document.addEventListener(ev, () => { this.refreshFsBtn(); this.layoutAfterFs(); });
+    });
+    this.refreshFsBtn();
     if (window.visualViewport) {
       window.visualViewport.addEventListener('resize', () => this.layout());
       window.visualViewport.addEventListener('scroll', () => this.layout());
     }
     this.layout();
-    ['fullscreenchange', 'webkitfullscreenchange', 'mozfullscreenchange', 'MSFullscreenChange']
-      .forEach(ev => document.addEventListener(ev, () => { this.refreshFsBtn(); this.layoutAfterFs(); }));
-    this.refreshFsBtn();
     LOG.add('I', 'ok');
     /* 打开游戏立即开始预载引擎（用户选 1B）：让进人机时引擎已就绪。
        有缓存时直接读 IndexedDB，不发网络请求；失败只更新页脚文案，不弹框打扰。 */
@@ -722,8 +883,9 @@ const UI = {
       LOG.add('T', id + ' x' + Math.round(e.clientX) + ' y' + Math.round(e.clientY) + ' sy' + Math.round(e.screenY || 0));
     }, true);
 
-    $('#btnFs').addEventListener('click', (e) => { e.stopPropagation(); this.captureFsAnchor(e); this.toggleFs(); });
     $('#btnSet').addEventListener('click', (e) => { e.stopPropagation(); this.openPanel(); });
+    $('#btnBackTop').addEventListener('click', (e) => { e.stopPropagation(); doBack(); });
+    $('#btnFs').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); this.toggleFs(); });
     $('#btnPve').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); LOG.add('M', 'pve'); this.pressGo($('#btnPve'), () => this.openPveSetup(true), () => this.openPveSetup()); });
     $('#btnNet').addEventListener('click', (e) => { e.stopPropagation(); Snd.tap(); LOG.add('M', 'net'); this.pressGo($('#btnNet'), () => this.openNetSetup(null, true), () => this.openNetSetup()); });
     $('#btnBack').addEventListener('click', (e) => {
@@ -938,15 +1100,14 @@ const UI = {
     const ta = box.querySelector('textarea');
     ta.value = txt;
     mask.appendChild(box);
-    /* 必须挂 #stage 而不是 body：全屏元素是 #stage，真实全屏时浏览器只绘制它及其子孙，
-       挂 body 上的弹窗会整个不显示（设置抽屉当初就是因为这个挪进 #stage 的）。 */
+    /* 挂在 #stage 下：与设置抽屉 #mask/#panel 同一层，层级与点击不会互相穿透。 */
     (document.getElementById('stage') || document.body).appendChild(mask);
     LOG.add('L', 'logbox=' + txt.length + 'B');
     mask.addEventListener('click', (e) => { if (e.target === mask) mask.remove(); });
     box.querySelector('#lgDl').addEventListener('click', () => LOG.download());
   },
 
-  // 安全区进出全屏会变，启动时量一次冻结成 px，底板内一律用定值
+  // 系统栏（地址栏/刘海）高度会变，启动时量一次冻结成 px，底板内一律用定值
   freezeInsets() {
     const probe = (css) => {
       const d = document.createElement('div');
@@ -960,182 +1121,91 @@ const UI = {
     rs.setProperty('--sit', Math.round(probe('top:0;width:1px;height:env(safe-area-inset-top,0px)').height) + 'px');
     rs.setProperty('--sib', Math.round(probe('bottom:0;width:1px;height:env(safe-area-inset-bottom,0px)').height) + 'px');
     rs.setProperty('--sir', Math.round(probe('right:0;width:env(safe-area-inset-right,0px);height:1px').width) + 'px');
+    /* 左安全区：原来只定义了 right 没定义 left（历史遗留），左上角返回键写 var(--sil,0px) 会恒取 0。
+       补上这一行，横屏/刘海机型的左上角返回键才不会被切。 */
+    rs.setProperty('--sil', Math.round(probe('left:0;width:env(safe-area-inset-left,0px);height:1px').width) + 'px');
   },
 
-  // 按可靠性依次取：全屏元素实测 → visualViewport → window
+  /* 0.5.17：统一成一条路径 —— 只取 visualViewport，window 兜底，不再分叉。
+     原来写的是「全屏元素优先」（照抄红白机），但它带来的是全屏瞬间 clientHeight
+     立刻跳到 879，而真实可见画面还停在 821（浏览器工具栏正在滑走）。
+     于是整页按 879 排版、画面却只有 821 —— 底部 58px 被裁掉，等画面撑开才出现。
+     主页底部那条带（btnFs 在 819~863）正好整段被裁，这就是「主页闪、难度页不闪」：
+     难度页 #head/#menu/#ver 被 display:none 藏了，底部只剩 btnFs 一个元素，
+     裁掉也是孤零零一个，看着就是整体下移；主页还留着菜单，裁切与重排同时发生。
+     统一取 visualViewport 后，plateH 跟着真实可见高度连续变，整页与画面同步滑动。
+     ⚠️ 风险：X 浏览器 / QQ 浏览器曾被记录「全屏后 visualViewport 不上报」。
+     若那两台出现尺寸不涨，日志里会有 V 记录证伪，届时再单独加兜底，不再搞两套并存。 */
   viewport() {
-    const fsEl = document.fullscreenElement || document.webkitFullscreenElement ||
-      document.mozFullScreenElement || document.msFullscreenElement;
     let w = 0, h = 0;
-    if (fsEl && fsEl.clientWidth > 0 && fsEl.clientHeight > 0) {
-      w = fsEl.clientWidth; h = fsEl.clientHeight;
-    } else if (window.visualViewport && window.visualViewport.width > 0) {
+    if (window.visualViewport && window.visualViewport.width > 0) {
       w = Math.round(window.visualViewport.width); h = Math.round(window.visualViewport.height);
     }
     if (!w || !h) { w = window.innerWidth; h = window.innerHeight; }
+    /* 回退全拿到 0 时回退到「上一个非 0 尺寸」而不是 0。原来一路回退到 0，
+       layout() 拿它去冻尺寸、Board.resize() 拿它算 cell，两者同时废掉，
+       表现就是按钮失踪 + 棋盘空白。 */
+    if (!w || !h) {
+      if (this._lastVw && this._lastVh) return { w: this._lastVw, h: this._lastVh };
+      return { w: w || 1, h: h || 1 };
+    }
+    this._lastVw = w; this._lastVh = h;
     return { w: w, h: h };
   },
 
-  layout() {
-    const v = this.viewport();
-    /* 底板只在「非全屏、不在过渡中、且补偿已归零」时重冻。
-       补偿未归零就重冻会量到全屏尺寸（实测退出后偏 85px 且回不来）。 */
-    if (!this.isFs() && !this._raf && !this._fsBusy && !this._fsdyCur) {
-      if (this._pw !== v.w || this._ph !== v.h) {
-        this._pw = v.w; this._ph = v.h;
-        const rs = document.documentElement.style;
-        rs.setProperty('--plateW', v.w + 'px');
-        rs.setProperty('--plateH', v.h + 'px');
-        if (this._lastW !== v.w || this._lastH !== v.h) {
-          this._lastW = v.w; this._lastH = v.h;
-          LOG.add('V', 'w' + v.w + ' h' + v.h + ' sy' + Math.round(this.screenTop()));
-        }
-      }
-    }
-    // 标题与菜单实测高度，供 CSS 防碰撞下限使用（标题会随屏宽换行变高）
-    const rs = document.documentElement.style;
-    const hh = Math.round($('#head').getBoundingClientRect().height);
-    const mh = Math.round($('#menu').getBoundingClientRect().height);
-    if (this._hh !== hh) { this._hh = hh; rs.setProperty('--headH', hh + 'px'); }
-    if (this._mh !== mh) { this._mh = mh; rs.setProperty('--menuH', mh + 'px'); }
-    // 退出全屏时视口会缩回去，重新拉起监视让补偿一路回到 0
-    if (!this.isFs() && this._fsdyCur && !this._raf) this.startAnchorWatch();
-    this.applyFsAnchor();
-  },
-
-  /* ---------------- 全屏锚定 ---------------- */
-  /* 底板是刚体，只需抵消视口顶边的位移，无需量任何元素 */
-  captureFsAnchor(e) {
-    if (this.isFs() || this._raf) return;   // 退出时或过渡未走完时不重记
-    this._anchorSy = this.screenTop();
-    /* 交叉校验：锚定全靠 window.screenY，而事件的 screenY−clientY 是它的独立取值。
-       两者在正常环境应相等；真机若不一致说明 screenY 不可靠、锚定会偏，写进日志好定位。 */
-    if (e && typeof e.screenY === 'number' && typeof e.clientY === 'number' && e.screenY > 0) {
-      const evOff = Math.round(e.screenY - e.clientY);
-      if (Math.abs(evOff - Math.round(this._anchorSy)) > 1) {
-        LOG.add('W', 'off_diff sy=' + Math.round(this._anchorSy) + ' ev=' + evOff);
-      }
-    }
-    this.startAnchorWatch();
-  },
-
-  // fsdy = 当前视口顶边 − 按下时的视口顶边，使底板顶边物理坐标恒定
-  applyFsAnchor(sy) {
-    if (this._anchorSy == null) return;
-    if (sy === undefined) sy = this.screenTop();
-    const next = Math.round(sy) - this._anchorSy;
-    if (next === this._fsdyCur) return;
-    this._fsdyCur = next;
-    $('#dock').style.setProperty('--fsdy', next + 'px');
-  },
-
-  /* 逐帧校正：不依赖 resize/visualViewport 事件（真机上可能滞后或不上报）。
-     只读 screenY，不触碰布局，因此不引起重排。 */
-  startAnchorWatch() {
-    if (this._raf) return;
-    const t0 = Date.now();
-    let still = 0, last = null;
-    const step = () => {
-      this._frames++;
-      const sy = this.screenTop();
-      still = (sy === last) ? still + 1 : 0;
-      last = sy;
-      this.applyFsAnchor(sy);
-      if (still > 30 || Date.now() - t0 > 2500) {
-        LOG.add('A', 'raf_stop frames=' + this._frames + ' fsdy=' + this._fsdyCur);
-        this.stopAnchorWatch();
-        return;
-      }
-      this._raf = requestAnimationFrame(step);
-    };
-    this._raf = requestAnimationFrame(step);
-  },
-  stopAnchorWatch() {
-    if (this._raf) cancelAnimationFrame(this._raf);
-    this._raf = 0;
-  },
-
-  // 0 是合法值（全屏时就该是 0），用 || 会跳过它去捡 screenTop 上的脏值
-  screenTop() {
-    if (typeof window.screenY === 'number' && isFinite(window.screenY)) return window.screenY;
-    if (typeof window.screenTop === 'number' && isFinite(window.screenTop)) return window.screenTop;
-    return 0;
-  },
-
-  // fullscreenchange 到达时部分内核尺寸还没更新完，补三次延迟重排兜底
-  layoutAfterFs() {
-    this.layout();
-    [100, 300, 600].forEach(ms => setTimeout(() => this.layout(), ms));
-  },
+  /* ==================== 全屏 ====================
+     整体照抄红白机（咩咩红白机 7946-8060 行）的实现，五点关键：
+     ① 全屏对象用 document.documentElement，body 兜底 —— 不用 #stage。
+        #stage 是 fixed inset:0，把它提成全屏元素会被送进 top layer 并按屏幕尺寸
+        重算，退出时又落回视口尺寸，尺寸来回跳正是「屏幕底下会闪」的来源。
+        红白机在可拓（822→879）与 QQ（657→837）两台机上都稳定 fs ok。
+     ② 退出成败以「浏览器真实状态」为准，不看 exitFullscreen() 的返回值 ——
+        否则返回键先被系统退出全屏、本地标记还是旧的，第一次点必然扑空报警。
+     ③ 被拒时挂 armFsOnTap：下一次真实触摸时就地补发（脱离手势栈的请求必被拒）。
+     ④ 450ms 节流，防反复进出时请求打架。
+     ⑤ layoutAfterFs：fullscreenchange 后 100/300/600ms 三次兜底重排，
+        因为部分浏览器全屏后不上报尺寸变化（红白机注释里点了 X 浏览器 / QQ 浏览器）。
+     ★ 不锁方向、不做旋转：我们竖版本来就竖，红白机那套 rotate(90deg) 是给横版
+       NES 用的；之前锁 portrait 实测在 Chrome/123 无效（本来就是竖屏）、
+       在 Chrome/122 反而促成屏幕转到 837x386 变横屏，可拓更直接 NotSupportedError。 */
 
   isFs() {
     return !!(document.fullscreenElement || document.webkitFullscreenElement ||
-      document.mozFullScreenElement || document.msFullscreenElement ||
-      document.webkitCurrentFullScreenElement);
-  },
-
-  exitFs() {
-    const d = document;
-    const f = d.exitFullscreen || d.webkitExitFullscreen || d.webkitCancelFullScreen ||
-      d.mozCancelFullScreen || d.msExitFullscreen;
-    if (!f) return Promise.reject(new Error('浏览器不支持退出全屏'));
-    try {
-      const r = f.call(d);
-      return (r && r.then) ? r : Promise.resolve(true);
-    } catch (e) { return Promise.reject(e); }
-  },
-
-  async toggleFs() {
-    // 节流：反复切换时浏览器的全屏请求会互相打架，短时间内重复点击直接忽略
-    const now = Date.now();
-    if (this._fsBusy || (this._fsAt && now - this._fsAt < 450)) {
-      LOG.add('F', 'skip');
-      return;
-    }
-    this._fsBusy = 1; this._fsAt = now;
-    try { await this._toggleFsInner(); } finally { this._fsBusy = 0; }
-  },
-  async _toggleFsInner() {
-    const wasFs = this.isFs();
-    let ok = false;
-    if (wasFs) {
-      // 以浏览器的真实状态为准，不看返回值：返回键会先被浏览器自己退出全屏
-      await this.exitFs().catch(() => { });
-      ok = !this.isFs();
-      if (!ok) toast('退出全屏失败，可试试系统的返回键或下拉状态栏', 'bad');
-    } else {
-      ok = await this.tryFs().catch(() => false);
-      if (!ok) {
-        toast('全屏被拒绝，请再点一次或改用浏览器菜单里的「全屏」', 'bad');
-        this.armFsOnTap();
-      }
-    }
-    LOG.add('F', (wasFs ? 'out' : 'in') + '=' + (ok ? 1 : 0) + ' fsdy=' + this._fsdyCur +
-      ' sy=' + Math.round(this.screenTop()) + ' vh=' + this.viewport().h);
-    if (ok && !wasFs) {
-      // 锁竖屏（本页是竖屏版面，锁横屏会把画面拧横），失败很常见不能中断流程
-      try {
-        const so = screen.orientation;
-        if (so && so.lock && !(this._orientLocked && /portrait/.test(so.type || ''))) {
-          const r = so.lock('portrait');
-          if (r && r.then) r.then(() => { this._orientLocked = 1; }).catch(() => { });
-          else this._orientLocked = 1;
-        }
-      } catch (e) { }
-      try { if (navigator.wakeLock && !this.wakeLock) this.wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { }
-    }
-    this.refreshFsBtn();
-    this.layout();
+      document.mozFullScreenElement || document.msFullscreenElement);
   },
 
   refreshFsBtn() {
-    const b = $('#btnFs');
+    const b = document.getElementById('btnFs');
+    if (!b) return;
     const on = this.isFs();
     b.classList.toggle('on', on);
     b.title = on ? '退出全屏' : '进入全屏';
+    /* 0.5.24：全屏切换时给 #stage 挂 sheen-off，CSS 里用它把流光
+       display:none —— 彻底消失，不是 paused（paused 只停进度，元素还在
+       渲染树里、还在参与合成）。3 秒后摘掉本类，并强制让动画从头左→右跑一遍
+       （先置 animation:none 再读 offsetWidth 强制回流、最后清空内联值，
+       否则只是接着上次进度走，不是「继续从左到右跑」）。
+       挂在这里是因为 fullscreenchange、初始化、toggleFs 之后都会调本函数，
+       一处覆盖全部状态变化；用系统返回键退出全屏也会走 fullscreenchange，不会漏。
+       首次调用（刚进页面）只记录状态、不挂类，避免一进门就看不到流光。 */
+    const st = document.getElementById('stage');
+    if (st) {
+      const first = (this._lastFsOn === undefined);
+      if (first) {
+        this._lastFsOn = on;
+      } else if (this._lastFsOn !== on) {
+        this._lastFsOn = on;
+        st.classList.add('sheen-off');
+        clearTimeout(this._sheenT);
+        this._sheenT = setTimeout(() => {
+          st.classList.remove('sheen-off');
+          const s = document.querySelector('.hall .sheen');
+          if (s) { s.style.animation = 'none'; void s.offsetWidth; s.style.animation = ''; }
+        }, 3000);
+      }
+    }
   },
 
-  // 全屏对象优先选 #stage：整块版面都在它里面，坐标系连续不跳
   tryFs() {
     if (this.isFs()) return Promise.resolve(true);
     const try1 = (node) => {
@@ -1148,19 +1218,186 @@ const UI = {
         return (r && r.then) ? r : Promise.resolve(true);
       } catch (e) { return Promise.reject(e); }
     };
-    const p1 = try1($('#stage'));
+    const p1 = try1(document.documentElement);
     if (!p1) return Promise.resolve(false);
     return p1.then(() => true).catch(() => {
-      const p2 = try1(document.documentElement);
-      if (!p2) return Promise.resolve(false);
-      return p2.then(() => true).catch(() => {
-        const p3 = try1(document.body);
-        return p3 ? p3.then(() => true).catch(() => false) : Promise.resolve(false);
-      });
+      const p2 = try1(document.body);
+      return p2 ? p2.then(() => true).catch(() => false) : Promise.resolve(false);
     });
   },
 
-  // 打开人机难度设置页：#app 覆盖在菜单之上，全屏按钮仍常驻
+  exitFs() {
+    const d = document;
+    const f = d.exitFullscreen || d.webkitExitFullscreen ||
+      d.webkitCancelFullScreen || d.msExitFullscreen || d.mozCancelFullScreen;
+    if (!f) return Promise.resolve(false);
+    try {
+      const r = f.call(d);
+      return (r && r.then) ? r : Promise.resolve(true);
+    } catch (e) { return Promise.reject(e); }
+  },
+
+  // 挂一次性监听：用户下一次真实触摸时就地全屏（此时一定有手势）
+  armFsOnTap() {
+    if (this._fsArmed) return;
+    this._fsArmed = true;
+    const self = this;
+    const go = function () {
+      self._fsArmed = false;
+      ['pointerdown', 'touchstart'].forEach(function (t) { document.removeEventListener(t, go, true); });
+      self.tryFs().then(function (r) {
+        if (r) { self.layout(); LOG.add('I', '已进入全屏（补发）'); }
+      })['catch'](function () { });
+    };
+    ['pointerdown', 'touchstart'].forEach(function (t) { document.addEventListener(t, go, true); });
+  },
+
+  async toggleFs() {
+    /* 节流：反复「全屏 → 退出 → 全屏」时浏览器的全屏请求会互相打架。
+       短时间内重复点击直接忽略，等上一次真正落地再说。 */
+    const now0 = Date.now();
+    if (this._fsBusy || (this._fsAt && now0 - this._fsAt < 450)) {
+      LOG.add('F', 'skip');
+      return;
+    }
+    this._fsBusy = 1; this._fsAt = now0;
+    try {
+      const wasFs = this.isFs();
+      let ok = false;
+      if (wasFs) {
+        /* 退出成败以「浏览器的真实状态」为准：目标是「不在全屏」，
+           只要查出来不在就算成功 —— 避免第一次点必扑空报警。 */
+        await this.exitFs()['catch'](function () { });
+        ok = !this.isFs();
+        if (!ok) LOG.add('W', '退出全屏失败，可试试系统的返回键或下拉状态栏');
+      } else {
+        ok = await this.tryFs()['catch'](function () { return false; });
+        if (!ok) {
+          LOG.add('W', '全屏被拒绝，请再点一次或改用浏览器菜单里的「全屏」');
+          this.armFsOnTap();
+        }
+      }
+      this.refreshFsBtn();
+      this.layout();
+    } finally { this._fsBusy = 0; }
+  },
+
+  // 全屏状态变化后立刻重排，再用 100/300/600ms 补三次，兜住尺寸滞后
+  layoutAfterFs() {
+    const self = this;
+    this.layout();
+    [100, 300, 600].forEach(function (ms) { setTimeout(function () { self.layout(); }, ms); });
+    this.recordFsFrames();
+  },
+
+  /* 0.5.19 全量逐帧记录器（2A）：全屏切换后 3000ms 内每 100ms 记一条，
+     不管正不正常都记（上限 30 条），正常时也留下一条完整基线，方便对照。
+     上一版（0.5.17）有两个设计缺陷：① 只在「plateH 与 vvH 不一致」时才记，
+     两者一直一致就一条都不记，等于白装；② 只比了 plateH 与 innerHeight，
+     漏掉了动画数和系统栏，而那才是主页独有的东西。这次补全七项：
+       plateH   排版用的高度（JS 写入 --plateH）
+       vvH      visualViewport.height 真实可见高度
+       innerH   window.innerHeight
+       anim     运行中动画数（document.getAnimations 过滤 playState==='running'）
+       fs       fullscreenElement 在不在
+       btnFsTop 全屏键实时 top
+       sib      env(safe-area-inset-bottom) 实测值（临时探针元素读回）
+     用户点一次全屏，这三十条能直接看出：谁在漂、漂多少、动画到底停没停、
+     系统栏高度是不是在来回跳。 */
+  recordFsFrames() {
+    const self = this;
+    if (this._recOn) return;
+    this._recOn = 1;
+    let n = 0;
+    const t0 = (window.performance && performance.now) ? performance.now() : Date.now();
+    function now() { return (window.performance && performance.now) ? performance.now() : Date.now(); }
+    if (!this._sibProbe) {
+      try {
+        const d = document.createElement('div');
+        d.style.cssText = 'position:fixed;left:-9999px;bottom:0;width:1px;height:0;' +
+          'padding-bottom:env(safe-area-inset-bottom,0px);pointer-events:none';
+        document.body.appendChild(d);
+        this._sibProbe = d;
+      } catch (e) { this._sibProbe = null; }
+    }
+    function animCount() {
+      try {
+        if (!document.getAnimations) return -1;
+        return document.getAnimations().filter(function (x) { return x.playState === 'running'; }).length;
+      } catch (e) { return -2; }
+    }
+    function sibVal() {
+      try { return self._sibProbe ? Math.round(self._sibProbe.getBoundingClientRect().height) : -1; }
+      catch (e) { return -2; }
+    }
+    function step() {
+      const vv = window.visualViewport;
+      const vpH = vv ? Math.round(vv.height) : 0;
+      const plateH = Math.round(parseFloat(getComputedStyle(document.documentElement)
+        .getPropertyValue('--plateH')) || 0);
+      const bf = document.getElementById('btnFs');
+      const bt = bf ? Math.round(bf.getBoundingClientRect().top) : -1;
+      n++;
+      /* LOG.add 只收两个参数（见 657 行），第三个会被静默丢掉——
+         参数必须自己 JSON.stringify 拼进 msg，否则日志里只剩光秃秃一行「W 全屏帧」。 */
+      LOG.add('W', '全屏帧 ' + JSON.stringify({
+        ms: Math.round(now() - t0), n: n,
+        plateH: plateH, vvH: vpH, innerH: window.innerHeight,
+        anim: animCount(), fs: document.fullscreenElement ? 1 : 0,
+        btnFsTop: bt, sib: sibVal()
+      }));
+      if (n < 30) setTimeout(step, 100);
+      else self._recOn = 0;
+    }
+    step();
+  },
+
+  layout() {
+    const v = this.viewport();
+    /* 底板尺寸只在视口真的变了时重冻（菜单是刚体，不该跟着地址栏收放抖）。 */
+    if (this._pw !== v.w || this._ph !== v.h) {
+      this._pw = v.w; this._ph = v.h;
+      const rs = document.documentElement.style;
+      rs.setProperty('--plateW', v.w + 'px');
+      rs.setProperty('--plateH', v.h + 'px');
+      if (this._lastW !== v.w || this._lastH !== v.h) {
+        this._lastW = v.w; this._lastH = v.h;
+        LOG.add('V', 'w' + v.w + ' h' + v.h);
+      }
+    }
+    // 标题与菜单实测高度，供 CSS 防碰撞下限使用（标题会随屏宽换行变高）
+    const rs = document.documentElement.style;
+    const hh = Math.round($('#head').getBoundingClientRect().height);
+    const mh = Math.round($('#menu').getBoundingClientRect().height);
+    if (this._hh !== hh) { this._hh = hh; rs.setProperty('--headH', hh + 'px'); }
+    if (this._mh !== mh) { this._mh = mh; rs.setProperty('--menuH', mh + 'px'); }
+    /* 0.5.16 滞后探针：--plateH 与 window.innerHeight 不同步时记一条 W。
+       沙盒里 env() 恒为 0、视口又是瞬时跳变，测不出真机的逐帧动画，
+       所以这里把真实数字写进日志，由真机告诉我们到底谁在滞后。 */
+    try {
+      const ih = window.innerHeight, ph = v.h;
+      if (Math.abs(ih - ph) > 2) {
+        const vr = $('#ver'), fr = $('#btnFs');
+        LOG.add('W', '滞后', {
+          plateH: ph, innerH: ih, diff: ih - ph,
+          verT: vr ? Math.round(vr.getBoundingClientRect().top) : null,
+          fsT: fr ? Math.round(fr.getBoundingClientRect().top) : null,
+          gaming: $('#stage').className
+        });
+      }
+    } catch (e) { }
+    /* 棋盘必须跟着视口重算。Board.resize() 原来只在 renderGame / 悔棋 / 旋转等少数入口调用，
+       而地址栏收放、旋转走的是 layout()，于是棋盘尺寸永远不更新
+       （实测：dispatch resize 后画布仍是旧尺寸）。
+       补在这里，三条事件链（resize / orientationchange / visualViewport）就都会重算棋盘。
+       有 canvas 才调，主页无棋盘时 Board.cv 为 null 会崩，故加守卫。 */
+    /* 只有画布尺寸真变了才重绘。resize() 返回 false 表示「尺寸没变、画布没被碰过」，
+       此时再 draw() 纯属浪费（而且每帧重绘 136 万像素正是掉帧/闪的来源）。 */
+    try { if (typeof Board !== 'undefined' && Board && Board.cv) { if (Board.resize() !== false) Board.draw(); } } catch (e) { }
+  },
+
+
+  // 打开人机难度设置页：#app 覆盖在菜单之上，浮层的设置键与返回键仍常驻
   /* 动态插入/移除测试模式按钮。整组居中（用户选 2B），
      故按钮增减时其余三个会跟着上移/下移约半个按钮高 —— 这是预期的。 */
   _toggleTestBtn() {
@@ -1222,53 +1459,9 @@ const UI = {
     this.layout();
   },
 
-  // 全屏被拒后挂一次性监听：下次真实触摸时一定有手势，就地再试一次
-  armFsOnTap() {
-    if (this._fsArmed) return;
-    this._fsArmed = true;
-    const go = () => {
-      this._fsArmed = false;
-      ['pointerdown', 'touchstart'].forEach(t => document.removeEventListener(t, go, true));
-      this.tryFs().then(r => { if (r) { this.layout(); toast('已进入全屏', 'ok'); } }).catch(() => { });
-    };
-    ['pointerdown', 'touchstart'].forEach(t => document.addEventListener(t, go, true));
-  }
 };
 
 
-function renderPveSetup(){
-  clearApp();
-
-  
-  netBar('人 机 对 战', renderHome);
-
-  var page = el('div','page');
-  page.style.justifyContent='flex-start';
-  var LV_ICON = { easy:'🌱', normal:'🔥', hard:'👑', nightmare:'👹', peak:'🐉' };
-  var c1 = el('div','card'); c1.appendChild(el('h3','','难度'));
-  c1.appendChild(optRow(
-    Object.keys(LEVELS).map(function(k){ return {key:k, icon:LV_ICON[k], label:LEVELS[k].name, desc:LEVELS[k].desc}; }),
-    G.level, function(k){ G.level=k; log('I','选择难度',{level:k}); renderPveSetup(); }));
-  var c2 = el('div','card'); c2.appendChild(el('h3','','我执'));
-  var o2 = optRow([
-    {key:'red',   icon:'🔴', label:'红方（先手）', desc:''},
-    {key:'black', icon:'⚫', label:'黑方（后手）', desc:''}
-  ], G.humanColor, function(k){ G.humanColor=k; log('I','选择执子',{color:k}); renderPveSetup(); });
-  /* 红黑同一行，各占一半，省出一行的高度 */
-
-  o2.style.cssText='display:flex;gap:8px';
-  [].forEach.call(o2.children, function(x){ x.style.cssText='flex:1;min-width:0'; });
-  c2.appendChild(o2);
-  page.appendChild(c1); page.appendChild(c2);
-
-  var go = el('button','btn pri','开始对局'); go.style.maxWidth='320px';
-  /* .btn 默认 flex:1 1 auto，纵向容器里会被拉伸：视口越高按钮越胖，全屏后可达 109px */
-
-  go.style.flex='0 0 auto';
-  go.onclick = startPve;
-  page.appendChild(go);
-  app.appendChild(page);
-}
 /* ==================== 联机：MQTT 信令 + 原生 WebRTC P2P ==================== */
 /* 设计：MQTT 只负责「发现房间 + 交换 SDP/ICE」；握手完成后棋步走 DataChannel 直连，不过服务器。
    房间目录靠 MQTT retained：房主上线贴条、下线撕条，加入方订阅一次即拿到全量在线房间。 */
@@ -1411,7 +1604,7 @@ function renderNetSetup(){
   app.appendChild(page);
 }
 /* --- 连服务器：三个公共 broker 竞速，谁先握手完用谁 --- */
-var _netConn = null, _tt = 0;
+var _tt = 0;
 function netEnsure(cb){
   if(NET.ok){ cb(true); return; }
   netTip('正在连接服务器…'); toast('正在连接服务器…');   /* 提示常驻，不再一闪而过 */
@@ -1886,10 +2079,11 @@ function showMenu(){
   try{ document.body.classList.remove('playing'); }catch(e){}
   app.className=''; clearApp();
   try{ document.getElementById('stage').classList.remove('gaming'); }catch(e){}
+  /* 主页没有顶栏，浮层返回键由 CSS 隐藏；这里顺手清掉登记，避免残留的上一页回调被误触。 */
+  setBack(null);
   try{ if(UI && UI.layout) UI.layout(); }catch(e){}
 }
 function renderHome(){ showMenu(); }
-function openDrawer(){ UI.openPanel(); }
 /* jieqi 的 log(code, msg, obj) → 转发到本页的诊断日志（同一个环形缓冲，日志里看得到） */
 function log(code, msg, obj){
   try{
@@ -1904,17 +2098,6 @@ function randInt(n){
 function shuffle(arr){
   for(var i=arr.length-1;i>0;i--){ var j=randInt(i+1); var t=arr[i]; arr[i]=arr[j]; arr[j]=t; }
   return arr;
-}
-function netBar(title, backFn){
-  var bar = el('div','netbar');
-  var bk = el('button','bk','‹');
-  bk.setAttribute('aria-label','返回');
-  bk.onclick = function(){ Snd.tap(); backFn ? backFn() : showMenu(); };
-  bar.appendChild(bk);
-  bar.appendChild(el('div','tt', title));
-  bar.appendChild(el('div','ph'));
-  app.appendChild(bar);
-  return bar;
 }
 /* ==================== 游戏模块：照抄 jieqi.html ==================== */
 var SAFE_HTML_RE = /^[^<>]*(?:<\/?(?:br|b|i|u|em|strong|span|small|div)[^>]*>[^<>]*)+$/i;
@@ -1948,15 +2131,16 @@ function modalBox(msg, btns){
 
 function confirmBox(msg, fn){
   return modalBox(msg, [
-    { txt:'取消' },
-    { txt:'确定', pri:true, fn:fn }
+    /* 0.5.26：确定放左、取消放右（原来相反）。确认类弹窗拇指落在左边更顺手。 */
+    { txt:'确定', pri:true, fn:fn },
+    { txt:'取消' }
   ]);
 }
 
 function askBox(msg, yesTxt, onYes, noTxt, onNo){
   return modalBox(msg, [
-    { txt: noTxt||'取消', fn: onNo },
-    { txt: yesTxt||'确定', pri:true, fn: onYes }
+    { txt: yesTxt||'确定', pri:true, fn: onYes },
+    { txt: noTxt||'取消', fn: onNo }
   ]);
 }
 function infoBox(msg){
@@ -2031,9 +2215,6 @@ var Snd = {
             this.tone({f:880,dur:0.10,type:'square',gain:0.16});
             this.tone({f:1174,dur:0.14,type:'square',gain:0.14,delay:0.11}); },
   undo:   function(){ this.unlock(); this.tone({f:700,f2:380,dur:0.12,type:'triangle',gain:0.16}); },
-  connect:function(){ this.unlock();
-            this.tone({f:523,dur:0.10,type:'triangle',gain:0.20});
-            this.tone({f:784,dur:0.14,type:'triangle',gain:0.20,delay:0.11}); },
   win:    function(){ this.unlock();
             [523,659,784,1046].forEach(function(f,i){ Snd.tone({f:f,dur:0.22,type:'triangle',gain:0.22,delay:i*0.13}); }); },
   lose:   function(){ this.unlock();
@@ -2054,7 +2235,12 @@ function HASH_OF(lv){ return (LEVELS[lv] && LEVELS[lv].hash) || 32; }
 var G = {
   mode:null, level:'normal', humanColor:'red', flip:false,
   state:null, sel:null, moves:[], thinking:false, history:[], viewState:null,
-  loading:null, aiColor:'black', ponder:null
+  loading:null, aiColor:'black', ponder:null,
+  /* 0.5.27「询问」开关：默认关。开启后，任一方走暗子翻开时自动弹出改子窗，
+     点某个兵种即改成它，点 ✕ 取消则保留翻出来的原样。
+     挂在 G 上而不是局部变量：startPve 只重置上面那批对局字段，不重置它，
+     所以开关状态能在「新局 / 悔棋 / 重开」之后保持，不会莫名其妙自己关掉。 */
+  askEdit:false
 };
 
 
@@ -2199,6 +2385,13 @@ var Rules = (function(){
     for(var i=0;i<90;i++){ var p=s.board[i]; if(p && p.color===color && p.role==='general') return i; }
     return -1;
   }
+  /* 发给引擎前的最后一道闸门：双方將都必须在盘上。
+     缺將的 FEN 对 Pikafish 是非法局面，实测会触发 wasm memory access out of bounds，
+     而且崩完不会自愈（见真机日志 0.3.6）。规则层已堵住吃將，这里是兜底——
+     万一别处又造出缺將局面，至少不会把引擎打死，退化成兜底走法而已。 */
+  function hasBothKings(s){
+    return findGeneral(s,'red') >= 0 && findGeneral(s,'black') >= 0;
+  }
   function kingsFace(s){
     var kr=findGeneral(s,'red'), kb=findGeneral(s,'black');
     if(kr<0||kb<0) return false;
@@ -2284,6 +2477,14 @@ var Rules = (function(){
     var out=[], p=s.board[from]; if(!p) return out;
     for(var i=0;i<raw.length;i++){
       var to=raw[i];
+      /* 将（帅）不能被真吃掉：象棋里将帅只能被「将死」，棋局在将死那一刻就结束。
+         正常对局走到不了一方能吃將的局面（被将军必须应将，inCheck 那步已过滤），
+         但【改子】绕过了这个前提——实测真机日志（0.3.6）：把 c7 改成红象后，
+         红象斜两格直取 e9 的黑將；黑將一没，FEN 里 k 变 B，
+         Pikafish wasm 收到这个非法局面直接 memory access out of bounds 崩溃，之后每步都只能走随机兜底。
+         所以在这里连同下面的 applyMove 一起堵死。 */
+      var tgt=s.board[to];
+      if(tgt && tgt.role==='general' && tgt.color!==p.color) continue;
       var t=clone(s);
       t.board[to]=t.board[from]; t.board[from]=null;
       if(t.board[to]) t.board[to].faceDown=false;
@@ -2324,8 +2525,14 @@ var Rules = (function(){
     var opp = n.turn;
     var moves = allLegal(n, opp);
     var chk = inCheck(n, opp);
-    if(moves.length === 0){
-      
+    /* 兜底：万一真走了「吃掉对方將」（例如引擎返回非法走法被 fallback 采纳），
+       不要再算将死/困毙——直接判走子方胜。否则缺將的局面会一路传给引擎把它打死。
+       注意此时 findGeneral 已返回 -1，inCheck 恒为 false，天然不会误判成「被将军」。 */
+    var ateKing = !!(cap && cap.role==='general' && cap.color!==p.color);
+    if(ateKing) log('W','走到吃將，直接判胜', { uci: idxToUci(from)+idxToUci(to), winner:p.color });
+    if(ateKing){
+      n.over = { result:'checkmate', winner: p.color };
+    } else if(moves.length === 0){
       n.over = { result: chk ? 'checkmate' : 'stalemate', winner: p.color };
     } else if(n.noCap >= 80){
       n.over = { result:'draw80', winner:null };
@@ -2415,6 +2622,7 @@ var Rules = (function(){
     newGame:newGame, clone:clone, effRole:effRole, inPalace:inPalace, other:other,
     genRaw:genRaw, legalMoves:legalMoves, allLegal:allLegal, applyMove:applyMove,
     inCheck:inCheck, kingsFace:kingsFace, attacked:attacked, findGeneral:findGeneral,
+    hasBothKings:hasBothKings,
     toFen:toFen, idxToUci:idxToUci, uciToIdx:uciToIdx, viewFor:viewFor };
 })();
 
@@ -2426,18 +2634,43 @@ var Board = {
     
     var mg = (document.getElementById('app') && document.getElementById('app').classList.contains('immersive')) ? 3 : 12;
     var aw = wrap.clientWidth - mg, ah = wrap.clientHeight - mg;
-    if(aw<=0||ah<=0) return;
+    /* 视口尺寸偶尔会量到 0（地址栏收放的过渡帧），这里就会算出 aw/ah<=0。
+       原来直接 return，cell/W/H 全停在 0，棋盘整帧空白（日志{"cell":0,"W":0,"H":0}）。
+       改成量到 0 时沿用上一次算好的尺寸重设画布，不再清空。 */
+    if(aw<=0||ah<=0){
+      if(this.cell>0 && this.W>0 && this.H>0 && this.ctx) return this.applyCv(this.W, this.H);
+      /* 光沿用旧尺寸还不够：若此刻是首次布局（还没有任何历史尺寸），
+         cell/W/H 会一直停在 0。排一帧重算，等容器真正有尺寸了再算一次。 */
+      try{ var _b=this; requestAnimationFrame(function(){ try{ _b.resize(); _b.draw(); }catch(e){} }); }catch(e){}
+      return;
+    }
     var cell = Math.floor(Math.min(aw/9, ah/10));
     if(cell<8) cell=8;
     this.cell = cell; this.pad = Math.round(cell*0.52);
     var W = cell*8 + this.pad*2, H = cell*9 + this.pad*2;
-    
     if(H > ah){ var k = ah/H; cell = Math.floor(cell*k); this.cell=cell; this.pad=Math.round(cell*0.52); W=cell*8+this.pad*2; H=cell*9+this.pad*2; }
+    return this.applyCv(W,H);
+  },
+  /* 给 canvas.width 赋值会【无条件清空画布】，哪怕赋的是完全相同的值（HTML 规范行为，
+     实测：画满红色后再次 cv.width=100，像素读回 0）。
+     而 layout() 被 resize / orientationchange / visualViewport 三条事件链绑定，
+     地址栏收放是几十帧动画 —— 于是每帧都在「清空 + 重绘」。
+     偏偏棋盘宽度被 9 列卡死（cell=min(aw/9,ah/10)），全屏多出的 57px 根本改不了 cell，
+     实测 822→879 前后 canvas 都是 388x431 —— 每帧都在重绘一个尺寸没变的画布，纯属无谓功。
+     红白机 fitScreen() 只改 c.style.width/height，从不碰 c.width/height，所以不闪。
+     这里加守卫：尺寸与 dpr 都没变就完全不碰画布（返回 false），调用方据此跳过重绘。 */
+  applyCv(W,H){
     var dpr = window.devicePixelRatio||1;
-    this.W=W; this.H=H;
+    var nw = Math.round(W*dpr), nh = Math.round(H*dpr);
+    if(this._sized && this.W===W && this.H===H && this._dpr===dpr
+       && this.cv.width===nw && this.cv.height===nh){
+      return false;   // 什么都没变，别碰画布（碰了就会清空）
+    }
+    this.W=W; this.H=H; this._dpr=dpr; this._sized=true;
     this.cv.style.width=W+'px'; this.cv.style.height=H+'px';
-    this.cv.width=Math.round(W*dpr); this.cv.height=Math.round(H*dpr);
+    this.cv.width=nw; this.cv.height=nh;
     this.ctx.setTransform(dpr,0,0,dpr,0,0);
+    return true;      // 真改了，调用方需要重绘
   },
   xy(r,c){
     var sr = G.flip ? r : (9-r);
@@ -2648,7 +2881,6 @@ function variantKey(){ return wantMT() ? 'mt' : 'st'; }
 function variantOf(){ return ENGINE_VARIANTS[variantKey()]; }
 
 function ck(name){ return variantKey() + ':' + name; }
-var ENGINE_FILES = [ variantOf().js, variantOf().wasm ];
 var REL = './pikajieqi-Pikafish-wasm/';
 var GH_RAW = 'https://raw.githubusercontent.com/kevin-jili/html-ck/main/XiangQi/jieqi/pikajieqi-Pikafish-wasm/';
 /* 顺序即优先级：jsDelivr 会 gzip（wasm 429KB→160KB）通常最快；同源路径次之 */
@@ -3064,6 +3296,18 @@ var ENGINE = {
           log('W','引擎stderr',{ line:m.line });
         } else if(m.type==='error'){
           log('E','引擎启动失败', { error:m.error });
+          /* 运行时崩溃（典型：wasm memory access out of bounds）时，boot 的 Promise 早已 settled，
+             下面的 fail() 会直接 return，什么都不做 —— 引擎从此永久失效，之后每一步都只能走随机兜底
+             （真机日志 0.3.6 实测：169217 崩一次、199244 又崩一次，之后 AI 全是 fallback:true）。
+             所以 fail() 之前先把状态彻底清干净：preload() 里 `if(this.ready) return this.ready`，
+             把 ready/worker 置空后，下一次 search 会自动重新 boot 一遍，引擎就活过来了。 */
+          try{
+            try{ w.terminate(); }catch(e){}
+            if(self.worker===w){ self.worker=null; }
+            self.ready = null;
+            self.handshakeDone = false;
+            log('W','引擎已复位，下次搜索将重新启动', {});
+          }catch(e){}
           fail(m.error||'引擎启动失败');
         } else if(m.type==='ready'){
           if(readyGot) return;
@@ -3437,13 +3681,36 @@ function optRow(items, cur, onPick){
 }
 
 
+/* ===== 全游戏唯一的返回键：浮层 #btnBackTop =====
+   以前每个页面各自在顶栏里 new 一枚 ‹（netbar 的 .bk、topbar 的 .bk），
+   加上主页的「← 返回游戏大厅」，全游戏有 3 枚返回键，样式与行为各写各的。
+   现在只留 #dock 上这一枚：主页自己有大按钮（CSS 把浮层那枚藏掉），
+   其余页面由各 render* 进来时调 setBack() 登记「点下去做什么」，按钮本身不重建、不消失。 */
+var BACK = { fn:null, confirm:false, msg:'确定返回？' };
+function setBack(fn, needConfirm, msg){
+  BACK.fn = fn || null;
+  BACK.confirm = !!needConfirm;
+  BACK.msg = msg || '确定返回？';
+}
+function doBack(){
+  if(!BACK.fn) return;
+  Snd.tap();
+  /* 只有对局页带确认（进度会丢），其余页面点一下直接回。 */
+  if(BACK.confirm) confirmBox(BACK.msg, BACK.fn);
+  else BACK.fn();
+}
+
+/* 三个设置页（人机 / 联机 / 联机测试）共用的顶栏，也是全站唯一的顶栏构造函数。
+   注意：本文件里曾经有两份 netBar 定义（旧的那份参数少一个 opt），
+   函数声明提升会让后一份覆盖前一份，改旧那份等于没改——已删除，现在只此一份。
+   顶栏里【不放任何按钮】：左 38px 占位 + 居中标题 + 右 38px 占位，
+   返回与设置都是 #dock 上的浮层按钮（#btnBackTop / #btnSet），全游戏各一枚，切页不消失。
+   backFn 只是登记到浮层返回键上（不带确认，点了就直接回）。 */
 function netBar(title, backFn, opt){
   opt = opt || {};
+  setBack(backFn || renderHome, false);
   var bar = el('div','netbar');
-  var bk = el('button','bk','‹');
-  bk.setAttribute('aria-label','返回');
-  bk.onclick = function(){ Snd.tap(); backFn ? backFn() : renderHome(); };
-  bar.appendChild(bk);
+  bar.appendChild(el('div','ph'));
   bar.appendChild(el('div','tt', title));
   bar.appendChild(el('div','ph'));
   app.appendChild(bar);
@@ -3490,7 +3757,7 @@ function renderPveSetup(){
   page.appendChild(c1); page.appendChild(c2);
 
   var go = el('button','btn pri','开始对局'); go.style.maxWidth='320px';
-  /* .btn 默认 flex:1 1 auto，纵向容器里会被拉伸：视口越高按钮越胖，全屏后可达 109px */
+  /* .btn 默认 flex:1 1 auto，纵向容器里会被拉伸：视口越高按钮越胖，实测可达 109px */
 
   go.style.flex='0 0 auto';
   go.onclick = startPve;
@@ -3579,33 +3846,25 @@ function renderGame(){
   var titleTxt;
   titleTxt = (G.mode==='pve') ? ('人机 · '+LEVELS[G.level].name)
            : ('联机 · ' + (ON.room||'') + (ON.role==='host' ? ' · 房主' : ' · 客机') + (ON.testMode ? ' · 测试' : ''));
-  var title = el('h1','', titleTxt);
-  top.appendChild(title);
-  var sp = el('div','sp'); top.appendChild(sp);
-  var bquit = el('button','btn sm','退出');
-  bquit.style.flex='0 0 auto';
-  bquit.onclick = function(){
-    var msg = '当前对局进度将丢失，确定退出？';
-    confirmBox(msg, function(){
-      try{ document.body.classList.remove('playing'); }catch(e){}
-      try{ var ap=document.getElementById('app'); if(ap) ap.classList.remove('immersive'); }catch(e){}
-      if(document.fullscreenElement || document.webkitFullscreenElement){
-        try{ if(document.exitFullscreen) document.exitFullscreen();
-             else if(document.webkitExitFullscreen) document.webkitExitFullscreen(); }catch(e){}
-      }
-      log('I','退出对局', { mode:G.mode, ply: G.state ? G.state.ply : 0 });
-      var wasTest = ON.testMode;
-      netLeave();
-      if(wasTest) renderNetTest();
-      else if(G.mode==='pve') renderPveSetup();
-      else renderNetSetup();
-    });
-  };
-  top.appendChild(bquit);
-  var bg = el('button','gear','⚙');
-  bg.setAttribute('aria-label','设置');
-  bg.onclick = openDrawer;
-  top.appendChild(bg);
+  /* 对局页顶栏同样只放布局：左 38px 占位 + 居中难度名 + 右 38px 占位。
+     返回与设置都交给 #dock 上的浮层按钮，与三个设置页完全一致。
+     旧结构是一个 sp 占位把「退出」顶到中间偏左（实测 left114，390 屏正中应为 195）；
+     0.3.3 又改成顶栏自带 ‹ 与 ⚙，结果全游戏出现 3 枚设置键 + 2 枚返回键，已全部收回到浮层。 */
+  setBack(function(){
+    /* 确认弹窗沿用原来的文案与回调，只换了触发它的按钮，行为一字不动。 */
+    try{ document.body.classList.remove('playing'); }catch(e){}
+    try{ var ap=document.getElementById('app'); if(ap) ap.classList.remove('immersive'); }catch(e){}
+    log('I','退出对局', { mode:G.mode, ply: G.state ? G.state.ply : 0 });
+    var wasTest = ON.testMode;
+    netLeave();
+    if(wasTest) renderNetTest();
+    else if(G.mode==='pve') renderPveSetup();
+    else renderNetSetup();
+  }, true, '当前对局进度将丢失，确定退出？');
+  top.appendChild(el('div','ph'));
+  top.appendChild(el('h1','', titleTxt));
+  top.appendChild(el('div','ph'));
+  /* 注：renderGame() 人机与联机共用（3517/4249 人机、1522 联机），改这里两模式同时生效。 */
   app.appendChild(top);
 
   
@@ -3644,8 +3903,22 @@ function renderGame(){
        Board.xy/pick 全读 G.flip，棋盘线、楚河汉界、棋子、选中框、走法提示一起翻。 */
     var rbtn = mk('旋转', function(){ G.flip = !G.flip; Board.draw(); log('I','旋转 flip='+G.flip); });
     rbtn.className = 'btn q';
+    /* 0.5.27「询问」：与旋转同一排、同一个 .q 宽度，就放在旋转右边。
+       默认灰底（关闭），点一下加 .pri 变橙底（亮起）。
+       这里【只切开关】，不碰棋局 —— 是否弹窗由 doMove / applyAi 在翻子那一刻查 G.askEdit 决定。
+       进对局时从 G.askEdit 恢复亮起：startPve 会 clearApp 重建底栏，按钮是新造的，
+       不恢复的话看着是关的、实际还开着，表现成「没点它却还在弹窗」。 */
+    var abtn = mk('询问', function(){
+      G.askEdit = !G.askEdit;
+      abtn.classList.toggle('pri', G.askEdit);
+      log('I','询问开关', { on:G.askEdit });
+      toast(G.askEdit ? '询问已开：走暗子将弹出改子窗' : '询问已关');
+    });
+    abtn.className = 'btn q';
+    if(G.askEdit) abtn.classList.add('pri');
     bb.appendChild(el('i','br'));
     bb.appendChild(rbtn);
+    bb.appendChild(abtn);
   } else {
     bb.appendChild(mk('认输', function(){
       confirmBox('确定认输？', function(){
@@ -3678,9 +3951,15 @@ function renderGame(){
   
   Board.init(cv);
   cv.addEventListener('click', onBoardClick);
-  try{ bindBoardTap(cv); log('T','棋盘触摸已绑定', { cell:Board.cell, pad:Board.pad, W:Board.W, H:Board.H }); }
+  try{ bindBoardTap(cv); }
   catch(e){ log('E','棋盘触摸绑定失败',{msg:e.message}); }
-  setTimeout(function(){ Board.resize(); Board.draw(); }, 0);
+  /* 原来在 bindBoardTap 后立刻记尺寸，而那时 setTimeout(0) 的重算还没跑，
+     于是日志里永远是 {"cell":0,"W":0,"H":0}（用户日志 3614 行实测）——
+     看着像棋盘废了，实际只是记早了。改成重算之后再记真实值。 */
+  setTimeout(function(){
+    try{ Board.resize(); Board.draw(); }catch(e){}
+    log('T','棋盘触摸已绑定', { cell:Board.cell, pad:Board.pad, W:Board.W, H:Board.H });
+  }, 0);
   try{ document.body.classList.add('playing'); }catch(e){}
 }
 
@@ -3827,15 +4106,16 @@ function modalBox(msg, btns){
 
 function confirmBox(msg, fn){
   return modalBox(msg, [
-    { txt:'取消' },
-    { txt:'确定', pri:true, fn:fn }
+    /* 0.5.26：确定放左、取消放右（原来相反）。确认类弹窗拇指落在左边更顺手。 */
+    { txt:'确定', pri:true, fn:fn },
+    { txt:'取消' }
   ]);
 }
 
 function askBox(msg, yesTxt, onYes, noTxt, onNo){
   return modalBox(msg, [
-    { txt: noTxt||'取消', fn: onNo },
-    { txt: yesTxt||'确定', pri:true, fn: onYes }
+    { txt: yesTxt||'确定', pri:true, fn: onYes },
+    { txt: noTxt||'取消', fn: onNo }
   ]);
 }
 function infoBox(msg){
@@ -3912,6 +4192,9 @@ function boardTapAt(px, py){
 }
 function onBoardClick(ev){
   if(!Board.cv) return;
+  /* 万一到落子这一步尺寸还是 0（容器没布局完、或重算一直没成功），
+     先就地补一次，否则点哪都落不了子。 */
+  if(!(Board.W>0 && Board.cell>0)){ try{ Board.resize(); Board.draw(); }catch(e){} }
   /* 触摸已自行判定并消费，忽略随后合成的 click，否则同一次点按会被处理两遍
      （走子后又把落点棋子选中） */
   if(Board.lastTap && Date.now() - Board.lastTap < 600) return;
@@ -3920,7 +4203,7 @@ function onBoardClick(ev){
 }
 /* 触摸自判定：不再依赖浏览器合成 click。
    iOS 上合成 click 有约 300ms 延迟，且一旦 touchmove 被 preventDefault 就根本不合成
-   （此前 SwipeGuard 全屏拦截，手指横移 15px 即吞掉点击，表现为「点了不走子」）。
+   （此前 SwipeGuard 全局拦截，手指横移 15px 即吞掉点击，表现为「点了不走子」）。
    这里按下→抬起位移不超过 TAP_SLOP 即判定为点击，并即时给出按下高亮。 */
 var TAP_SLOP = 24;
 /* 连点改子（原 1A 长按方案已废弃）。
@@ -3966,7 +4249,7 @@ function bindBoardTap(cv){
   }
   /* 诊断打点（1A）：按下 / 抬起 / 抖动取消 各记一条 T 码。
      下次日志若只看见 down 没有 up，说明事件被浏览器手势（如 touch-action 引发的
-     平移/缩放）吞掉了——这正是 Firefox 全屏下「连点没反应」的怀疑方向。 */
+     平移/缩放）吞掉了——这正是 Firefox 上「连点没反应」的怀疑方向。 */
   function onDown(e){
     if(e.touches && e.touches.length>1) { down=false; log('T','按下 多指，忽略'); return; }
     var p0 = at(e); sx=p0[0]; sy=p0[1]; down=true; moved=false;
@@ -4016,10 +4299,82 @@ function drawPieceIcon(cv, p, size){
   /* 直接复用棋盘棋子的绘制代码：只把坐标函数换成「永远居中」，不改动 Board 自身状态 */
   Board.drawPiece.call({ ctx:cx, cell:size, xy:function(){ return [size/2, size/2]; } }, 0, p);
 }
-function openPieceEditor(idx){
-  if(G.mode!=='pve' || !G.state){ log('T','弹窗拦:非人机或无棋局', { i:idx }); return; }
+/* 0.5.28：改子弹窗可拖动。默认居中，按住「按钮以外」的地方可拖到任意位置，
+   免得它正好压住刚走完那一步、看不清棋盘上是谁动的。每次打开都回到正中（不记上次位置）。
+
+   四条约束，都是照着这段代码的实际形状定的：
+   · 只改 transform，不动 .mask 的 flex 居中 —— 拖之前居中、拖多少偏多少，关掉（元素销毁）即复位，
+     不用自己算居中坐标，也不会和 width:min(90vw,340px) 这些响应式尺寸打架。
+   · 起点落在 button 上（含兵种键里的 canvas，父级就是 .pbtn）不启动拖动，
+     否则「点兵种」会被判成拖拽而点不动 —— 这是最容易踩的一条。
+   · setPointerCapture：手指滑出弹窗范围仍能继续拖；没有 PointerEvent 的旧内核退 touch + mouse。
+   · 夹在可视区内，边距留 18px：右上角 ✕ 是 top/right:-14px 骑在卡片外的，
+     边距给小了拖到边上 ✕ 会被裁掉，那就真关不掉了。 */
+function bindEditDrag(box, mask){
+  var ox=0, oy=0, on=false, sx=0, sy=0, minX=0, maxX=0, minY=0, maxY=0;
+  function clamp(v,a,b){ return v<a?a:(v>b?b:v); }
+  function apply(){ box.style.transform = (ox||oy) ? ('translate('+ox+'px,'+oy+'px)') : ''; }
+  function start(cx, cy){
+    var r = box.getBoundingClientRect(), m = mask.getBoundingClientRect(), M = 18;
+    var bx = r.left - ox, by = r.top - oy;              /* 未位移时的原位 */
+    minX = (m.left + M) - bx;   maxX = (m.right  - M) - (bx + r.width);
+    minY = (m.top  + M) - by;   maxY = (m.bottom - M) - (by + r.height);
+    /* 弹窗比可视区还大时（极小屏）夹不住，干脆锁死为 0，免得算出一个反向区间 */
+    if(minX > maxX){ minX = maxX = 0; }
+    if(minY > maxY){ minY = maxY = 0; }
+    sx = cx; sy = cy; on = true; box.classList.add('dragging');
+  }
+  function move(cx, cy){
+    if(!on) return;
+    ox = clamp(ox + (cx - sx), minX, maxX);
+    oy = clamp(oy + (cy - sy), minY, maxY);
+    /* 基准跟着「夹完的实际值」走：贴边后往回拖不会攒下隐形位移（否则表现为「卡住拖不动」） */
+    sx = cx; sy = cy;
+    apply();
+  }
+  function end(){ if(!on) return; on = false; box.classList.remove('dragging'); }
+  function ok(t){ return !!t && !!t.closest && !t.closest('button'); }
+  if(window.PointerEvent){
+    box.addEventListener('pointerdown', function(e){
+      if(!ok(e.target)) return;
+      start(e.clientX, e.clientY);
+      try{ box.setPointerCapture(e.pointerId); }catch(_){}
+      e.preventDefault();
+    });
+    box.addEventListener('pointermove', function(e){
+      if(!on) return;
+      move(e.clientX, e.clientY); e.preventDefault();
+    });
+    box.addEventListener('pointerup', end);
+    box.addEventListener('pointercancel', end);
+  } else {
+    box.addEventListener('touchstart', function(e){
+      if(!ok(e.target) || !e.touches.length) return;
+      var t = e.touches[0]; start(t.clientX, t.clientY);
+    }, { passive:true });
+    box.addEventListener('touchmove', function(e){
+      if(!on || !e.touches.length) return;
+      var t = e.touches[0]; move(t.clientX, t.clientY); e.preventDefault();
+    }, { passive:false });
+    box.addEventListener('touchend', end);
+    box.addEventListener('touchcancel', end);
+    box.addEventListener('mousedown', function(e){
+      if(!ok(e.target)) return;
+      start(e.clientX, e.clientY); e.preventDefault();
+    });
+    window.addEventListener('mousemove', function(e){ move(e.clientX, e.clientY); });
+    window.addEventListener('mouseup', end);
+  }
+}
+
+function openPieceEditor(idx, onClose){
+  /* 0.5.27：可选的关闭回调，给「询问」自动弹窗用 —— 弹窗关掉之后才继续走 AI。
+     包成「一次性」调用，且两处提前 return（非人机 / 将帅不可改）也必须触发它：
+     否则弹窗压根没开、回调没人调，AI 就永远卡住不走下一步了。 */
+  function fireClose(){ if(typeof onClose==='function'){ var f=onClose; onClose=null; f(); } }
+  if(G.mode!=='pve' || !G.state){ log('T','弹窗拦:非人机或无棋局', { i:idx }); fireClose(); return; }
   var p = G.state.board[idx];
-  if(p && p.role==='general'){ log('T','弹窗拦:将帅不可改', { i:idx }); toast('将（帅）不能修改'); return; }
+  if(p && p.role==='general'){ log('T','弹窗拦:将帅不可改', { i:idx }); toast('将（帅）不能修改'); fireClose(); return; }
   log('T','弹窗打开', { i:idx, uci:Rules.idxToUci(idx), c:p?p.color:'空' });
   var color = p ? p.color : G.humanColor;
   /* 明暗状态：跟着这枚子本来的 faceDown 走（3A：空格新增时 p 为 null，默认明子）。
@@ -4028,7 +4383,7 @@ function openPieceEditor(idx){
   var old = document.querySelector('.editbox');
   if(old && old.parentNode) old.parentNode.remove();      /* 连开时先收掉上一个，避免遮罩叠加 */
   var host = document.getElementById('stage') || document.body;
-  var mask = el('div','mask');
+  var mask = el('div','mask clear');   /* clear：背景不加暗，见 .mask.clear 注释 */
   var box = el('div','editbox');
   /* 右上角 ✕：弹窗【唯一】的关闭方式。
      为什么取消「点框外关闭」：日志实测 19 次弹窗打开、applyEdit 成功 0 次、无 JS 报错，
@@ -4076,6 +4431,7 @@ function openPieceEditor(idx){
   box.appendChild(tipEl);
   mask.appendChild(box);
   host.appendChild(mask);
+  bindEditDrag(box, mask);        /* 0.5.28：必须在入 DOM 之后再绑，getBoundingClientRect 才有值 */
   /* 三个开关 + 标题 + 底部提示的统一刷新点。凡是会改变外观的状态都走这里，
      避免「改了状态忘了重画」这类只改一半的 bug。 */
   function sync(){
@@ -4094,9 +4450,9 @@ function openPieceEditor(idx){
     btns.forEach(function(btn){
       drawPieceIcon(btn.querySelector('canvas'), { color:color, role:btn.getAttribute('data-role'), faceDown:false }, 38);
     });
-    tipEl.textContent = isDark ? '暗子按所在格位的本位兵种走，走一步自动翻开'
-      : (canDark ? '点兵种即改好，点「暗」改暗子；改完点右上角 ✕ 关闭'
-                 : '此格非暗子原位，只能设为明子');
+    tipEl.textContent = isDark ? '暗子按所在格位的本位兵种走，走一步自动翻开（按住空白处可拖开）'
+      : (canDark ? '点兵种即改好，点「暗」改暗子；按住空白处可拖动；改完点右上角 ✕ 关闭'
+                 : '此格非暗子原位，只能设为明子（按住空白处可拖开）');
   }
   ['red','black'].forEach(function(c){
     sw[c].addEventListener('click', function(e){
@@ -4129,6 +4485,7 @@ function openPieceEditor(idx){
     mask.remove();
     log('T','弹窗关闭:点X', { i:idx, uci:Rules.idxToUci(idx) });
     Snd.tap();
+    fireClose();
   });
   sync();
 }
@@ -4141,7 +4498,7 @@ function applyEdit(idx, color, role, faceDown){
   log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role, faceDown:!!faceDown });
   /* 改完【不关窗】：用户要「改好 → 点 ✕ → 接着改别的子」。
      自动关窗会让人看不见结果，且下一个子的连点要重新起算。
-     .mask 是全屏 72% 黑遮罩，但已取消点框外关闭，弹窗会一直等你点 ✕。 */
+     .mask 是铺满屏幕的 72% 黑遮罩，但已取消点框外关闭，弹窗会一直等你点 ✕。 */
   var cn = (Rules.ROLE_CN[role] && Rules.ROLE_CN[role][color]) || role;
   toast('已改为 ' + (color === 'red' ? '红' : '黑') + (faceDown ? '暗' : '') + cn
     + (faceDown ? '，走一步后翻开' : '') + '，点 ✕ 可继续改别的子');
@@ -4159,7 +4516,17 @@ function doMove(from, to){
   feedbackMove(res.evt);
   Board.draw(); updateStatus();
   if(isGameOver()) return;
-  if(G.mode==='pve') setTimeout(aiTurn, 260);
+  if(G.mode==='pve'){
+    /* 0.5.27「询问」：我走暗子翻开 → 先弹改子窗，等关窗之后才轮到 AI。
+       关窗有两条路：点某个兵种 = 改成它（applyEdit 立即生效、不关窗），再点 ✕；
+       或直接点 ✕ = 取消，保留翻出来的那个原样。两条最终都走 ✕ → 回调 → AI。
+       不能照旧 setTimeout(aiTurn,260)：那样你还在改上一步翻出来的子，
+       AI 已经把下一步走了，改完一抬头局面全变了。
+       res.evt.revealed 非空即表示这一步翻开了暗子，翻开的子就落在 to 格。 */
+    if(G.askEdit && res.evt.revealed){
+      setTimeout(function(){ openPieceEditor(to, function(){ setTimeout(aiTurn, 260); }); }, 300);
+    } else setTimeout(aiTurn, 260);
+  }
 }
 
 
@@ -4221,6 +4588,12 @@ function doHint(){
   if(G.state.turn!==G.humanColor){ toast('等AI走完'); return; }
   G.thinking=true; updateStatus();
   var fen = Rules.toFen(G.state, G.humanColor);
+  /* 缺將的 FEN 会把 wasm 打死（memory access out of bounds），发之前先拦一道。 */
+  if(!Rules.hasBothKings(G.state)){
+    G.thinking=false;
+    log('W','缺將，不发引擎', { fen:fen });
+    toast('局面异常（缺將），无法给出建议'); updateStatus(); return;
+  }
   ENGINE.search(fen, { movetime:1500 }).then(function(r){
     G.thinking=false;
     if(r.best){
@@ -4292,6 +4665,16 @@ async function aiTurn(){
   }
   var fen = Rules.toFen(G.state, G.aiColor);
   log('I','AI思考', { fen:fen, level:G.level, opt: (lv.depth?('depth '+lv.depth):('movetime '+lv.movetime)) });
+  /* 缺將就别发给引擎了：实测这种非法 FEN 会让 wasm 抛 memory access out of bounds，
+     而且崩完引擎不会自愈（真机日志 0.3.6：崩两次后每步都只能走随机兜底）。
+     这里改成跳过搜索、直接用 pickEngineMove 的兜底，并记一条日志。 */
+  if(!Rules.hasBothKings(G.state)){
+    log('W','缺將，跳过引擎搜索', { fen:fen });
+    var mv0 = pickEngineMove(G.state, G.aiColor, null);
+    G.thinking=false;
+    if(mv0) applyAi(mv0.from, mv0.to, true); else updateStatus();
+    return;
+  }
 
   var usedPonder=false, oldP=null, pr=null;
   if(G.ponder){
@@ -4334,9 +4717,15 @@ function applyAi(from, to, fallback){
   
   /* 注意：G.state.over 恒为对象（{result:null,winner:null}），直接取反永远是 false，
      后台思考会永远启动不了 —— 必须用 isOver() 判断 */
-  if(LEVELS[G.level].ponder && !isOver(G.state.over)){
-    startPonder();
+  function goPonder(){
+    if(LEVELS[G.level].ponder && !isOver(G.state.over)) startPonder();
   }
+  /* 0.5.27「询问」：AI 走暗子翻开 → 同样弹窗（与玩家侧同一套 openPieceEditor）。
+     后台思考压到关窗之后再启：否则你正改着 AI 刚翻出来的子，引擎在后台按旧局面猛搜，
+     白烧 CPU，且算出来的预测着法对不上改完的局面。 */
+  if(G.askEdit && res.evt.revealed){
+    setTimeout(function(){ openPieceEditor(to, goPonder); }, 300);
+  } else goPonder();
 }
 
 
@@ -4351,6 +4740,8 @@ async function startPonder(){
     /* 预测着法优先用引擎上次 bestmove 免费附带的 ponder（省一次 400ms 浅搜）；
        但它可能缺失（PV 太短）或在我方规则下不合法，这两种情况都退回浅搜，保证后台思考必定启动 */
     var pm = G.lastPonder;
+    /* 缺將时后台思考也别启动：它发的 FEN 同样会把 wasm 打死，且崩在后台更难发现。 */
+    if(!Rules.hasBothKings(G.state)){ log('W','缺將，后台思考不启动', {}); return; }
     var f = pm?Rules.uciToIdx(pm.slice(0,2)):-1, t = pm?Rules.uciToIdx(pm.slice(2,4)):-1;
     if(!pm || f<0 || t<0 || Rules.legalMoves(G.state,f).indexOf(t)<0){
       var pr = await ENGINE.search(Rules.toFen(G.state, G.humanColor), { movetime:400 });
