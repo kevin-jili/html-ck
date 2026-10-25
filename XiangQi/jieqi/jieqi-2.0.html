@@ -438,6 +438,10 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .logbox{width:min(86vw,340px);height:min(86vw,340px);flex:0 0 auto;background:#231b14;
   border:1px solid #55432f;border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:8px}
 .logbox .tip,.editbox .tip{font-size:12px;color:#9d8a6c;line-height:1.4;text-align:center;flex:0 0 auto}
+/* 0.5.31：弹窗半透明后，标题（归属色+明暗+uci）和底部提示是唯一直接叠在透出棋盘上的文字，
+   棋盘浅格 216 比原来的 #231b14 底色亮得多，文字会糊进去。给一层深色描边压住，
+   不动 color、不加底衬（加了会撑高弹窗、挤掉棋子行）。 */
+.editbox .tip{text-shadow:0 1px 3px rgba(0,0,0,.92),0 0 6px rgba(0,0,0,.75)}
 /* 可编辑（去掉 readonly）：手机上能用输入法长按全选/复制，不依赖系统复制菜单是否可用。 */
 .logbox textarea{flex:1 1 auto;min-height:0;width:100%;box-sizing:border-box;resize:none;
   background:#14100b;color:#c9b58a;border:1px solid #3a2e22;border-radius:8px;padding:8px;
@@ -451,7 +455,13 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
    第二行三个开关：红 / 黑 / 暗（文字前小亮点：亮=开启，灭=关闭）。
    暗不是第三方，是本方阵营的「明暗开关」：亮=该子是暗子，且此时不可再点（同己方颜色键）。
    右上角 ✕ 是唯一关闭方式——点遮罩不关，避免手指第二下落点在黑边上把弹窗秒关。 */
-.editbox{position:relative;width:min(90vw,340px);flex:0 0 auto;background:#231b14;border:1px solid #55432f;
+/* 0.5.31：改子弹窗本体改半透明 —— 弹窗宽 min(90vw,340px)，而棋盘只有 388px 宽（405 屏），
+   不透明的话几乎把整块棋盘盖死，「询问」自动弹出时正好挡住刚翻开的那枚子，正是要你看清的东西。
+   alpha 取 .5：实测（405 屏、弹窗 340x179 @32,321）弹窗左 padding 带原来 (34,26,19) 全黑、
+   真实棋盘 (201,106,74)，改后半透明 (113,73,45) —— 细节保留 50%，棋格与棋子的明暗差从 0 回到 15+
+   能分辨轮廓。.62 只保留 38% 偏实，.45 更透但标题文字会糊进棋盘。
+   弹窗内的兵种键 .pbtn、开关 .swbtn、关闭 ✕ .edx 各有自己的不透明底色，不受影响。 */
+.editbox{position:relative;width:min(90vw,340px);flex:0 0 auto;background:rgba(35,27,20,.5);border:1px solid #55432f;
   border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:10px}
 /* 0.5.28：改子弹窗可拖动。touch-action:none 让手指横拖时浏览器不抢去做滚动/缩放，
    user-select:none 免得拖出一串文字选中蓝块。兵种键和开关照常可点 —— 拖动起点落在 button 上
@@ -659,7 +669,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.5.29';
+const JIEQI_VER = '0.5.31';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -2240,7 +2250,14 @@ var G = {
      点某个兵种即改成它，点 ✕ 取消则保留翻出来的原样。
      挂在 G 上而不是局部变量：startPve 只重置上面那批对局字段，不重置它，
      所以开关状态能在「新局 / 悔棋 / 重开」之后保持，不会莫名其妙自己关掉。 */
-  askEdit:false
+  askEdit:false,
+  /* 0.5.30「悔棋中断 AI」：局面代次。
+     悔棋时 G.gen++，aiTurn / startPonder / doHint 每次 await 回来比对一次，
+     失配就把搜索结果丢掉、不落子。
+     为什么不能只认 ENGINE 的 aborted：aiTurn 中间有两段 await（等旧后台思考、发新搜索），
+     悔棋若正好卡在这两段之间的缝隙里，新搜索拿到的是全新 token，aborted=false，
+     AI 会在你已悔过的局面上继续落子。代次校验把这层缝堵上。 */
+  gen:0
 };
 
 
@@ -4566,8 +4583,16 @@ function showResult(o){
 
 function doUndo(){
   if(G.mode!=='pve'||!G.state){ return; }
-  if(G.thinking){ toast('AI 正在思考，请稍候'); return; }
-  if(!G.history.length){ toast('没有可悔的棋'); return; }
+  /* 0.5.30：AI 思考中不再挡回。原来直接 toast「请稍候」，走错一步只能干等（死档最长 5 秒）。
+     改成「代次作废」：G.gen++ 让在飞的搜索结果全部失效，aiTurn 每次 await 回来比对代次，
+     失配即丢弃、不落子。界面立刻回退，后台那次搜索自己跑完（结果已丢弃）。
+     顺序有讲究：先确认真有棋可悔，再中断。AI 走第一手时 history 为空，
+     这时中断会让 AI 卡在 thinking 里没人接手，局面就死了。 */
+  var canUndo=false;
+  for(var i=G.history.length-1;i>=0;i--){ if(G.history[i].turn===G.humanColor){ canUndo=true; break; } }
+  if(!canUndo){ toast('没有可悔的棋'); return; }
+  var aborted = !!G.thinking;
+  if(aborted){ G.gen++; ENGINE.stop(); log('I','悔棋：中断AI思考', { gen:G.gen }); }
   // 回退到"轮到我走"的最近一个局面（撤销 AI 一步 + 自己一步）
   var target=null;
   while(G.history.length){
@@ -4576,17 +4601,19 @@ function doUndo(){
   }
   if(!target){ toast('没有可悔的棋'); return; }
   ENGINE.stop();
+  G.thinking=false;
   G.state=target; G.sel=null; G.moves=[]; G.ponder=null;
   G.viewState=Rules.viewFor(G.state,G.humanColor);
-  log('I','悔棋', { backToPly:G.state.ply });
+  log('I','悔棋', { backToPly:G.state.ply, aborted:aborted });
   Snd.undo();
-  Board.draw(); updateStatus(); toast('已悔棋');
+  Board.draw(); updateStatus(); toast(aborted?'已中断AI思考并悔棋':'已悔棋');
 }
 
 function doHint(){
   if(G.mode!=='pve') return;
   if(G.state.turn!==G.humanColor){ toast('等AI走完'); return; }
   G.thinking=true; updateStatus();
+  var myGen = G.gen;   /* 0.5.30：提示的搜索也受代次约束，悔棋后不画到旧局面上 */
   var fen = Rules.toFen(G.state, G.humanColor);
   /* 缺將的 FEN 会把 wasm 打死（memory access out of bounds），发之前先拦一道。 */
   if(!Rules.hasBothKings(G.state)){
@@ -4596,6 +4623,7 @@ function doHint(){
   }
   ENGINE.search(fen, { movetime:1500 }).then(function(r){
     G.thinking=false;
+    if(G.gen!==myGen){ updateStatus(); return; }
     if(r.best){
       var from=Rules.uciToIdx(r.best.slice(0,2)), to=Rules.uciToIdx(r.best.slice(2,4));
       if(from>=0&&to>=0){
@@ -4654,6 +4682,9 @@ async function aiTurn(){
   if(G.state.turn!==G.aiColor) return;
   if(isOver(G.state.over)) return;
   G.thinking=true; updateStatus();
+  /* 0.5.30：记下进入时的局面代次。悔棋会 G.gen++，下面每个 await 回来都比一次，
+     失配说明局面已经变了（你悔了棋），这个结果必须丢掉，不能在悔过的盘面上落子。 */
+  var myGen = G.gen;
   var lv = LEVELS[G.level];
   if(ENGINE.hashFor !== G.level){
     /* 取「难度档位」与「线程建议值」的较大者。
@@ -4662,6 +4693,7 @@ async function aiTurn(){
 
     await ENGINE.setHash(Math.max(HASH_OF(G.level), ENGINE.suggestedHash()));
     ENGINE.hashFor = G.level;
+    if(G.gen!==myGen){ log('I','AI思考作废·setHash后', { gen:G.gen, myGen:myGen }); G.thinking=false; updateStatus(); return; }
   }
   var fen = Rules.toFen(G.state, G.aiColor);
   log('I','AI思考', { fen:fen, level:G.level, opt: (lv.depth?('depth '+lv.depth):('movetime '+lv.movetime)) });
@@ -4685,6 +4717,8 @@ async function aiTurn(){
     /* 关键：必须等旧搜索真正退出再发新搜索。
        mt 下若不等，新搜索会排在旧搜索后面排队，实测未命中卡 45 秒 */
     try{ pr = await oldP.promise; }catch(e){ pr=null; }
+    /* 0.5.30：等旧后台思考的这段最长（单核实测能到 45 秒），悔棋最容易卡在这里 */
+    if(G.gen!==myGen){ log('I','AI思考作废·等旧后台后', { gen:G.gen, myGen:myGen }); G.thinking=false; updateStatus(); return; }
   }
 
   var r;
@@ -4693,6 +4727,13 @@ async function aiTurn(){
     else r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
   }catch(e){ log('E','AI搜索异常',{msg:e.message}); r=null; }
 
+  /* 0.5.30：结果到手再比一次代次；顺带认 ENGINE 自己的 aborted（token 被 stop 顶掉）。
+     两个都要：aborted 挡的是"这次搜索被 stop"，代次挡的是"悔棋卡在两次 await 缝隙里、
+     新搜索拿到全新 token 所以 aborted=false"这种情况。 */
+  if(G.gen!==myGen || (r && r.aborted)){
+    log('I','AI思考作废·结果丢弃', { gen:G.gen, myGen:myGen, aborted:!!(r&&r.aborted) });
+    G.thinking=false; updateStatus(); return;
+  }
   G.thinking=false;
   /* 解析 + 非法兜底走公共函数（与机器人两条链路同一套逻辑） */
 
@@ -4737,6 +4778,9 @@ function applyAi(from, to, fallback){
    多线程 stop 实测 1ms 生效，可直接 go depth 40。 */
 async function startPonder(){
   try{
+    /* 0.5.30：后台思考同样受代次约束。悔棋后不该再按旧局面起后台搜索，
+       否则它会一直占着 CPU 搜一个已经被悔掉的局面。 */
+    var myGen = G.gen;
     /* 预测着法优先用引擎上次 bestmove 免费附带的 ponder（省一次 400ms 浅搜）；
        但它可能缺失（PV 太短）或在我方规则下不合法，这两种情况都退回浅搜，保证后台思考必定启动 */
     var pm = G.lastPonder;
@@ -4745,6 +4789,7 @@ async function startPonder(){
     var f = pm?Rules.uciToIdx(pm.slice(0,2)):-1, t = pm?Rules.uciToIdx(pm.slice(2,4)):-1;
     if(!pm || f<0 || t<0 || Rules.legalMoves(G.state,f).indexOf(t)<0){
       var pr = await ENGINE.search(Rules.toFen(G.state, G.humanColor), { movetime:400 });
+      if(G.gen!==myGen){ log('I','后台思考作废·浅搜后', { gen:G.gen, myGen:myGen }); return; }
       pm = pr && pr.best;
       f = pm?Rules.uciToIdx(pm.slice(0,2)):-1; t = pm?Rules.uciToIdx(pm.slice(2,4)):-1;
     }
