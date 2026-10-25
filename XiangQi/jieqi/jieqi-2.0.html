@@ -242,16 +242,22 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
      elementFromPoint(按钮中心) 命中的是 bottombar —— 按钮看得见但点不动，
      用户日志里「点全屏键无任何记录、点设置键却有反应」正是这个差别
      （#btnSet/#btnBackTop 在 149 行写了 auto，所以它们正常）。 */
+/* 0.5.36：全屏键改半透明。它压在「红失／黑失」那一行的正上方，
+   实心 #3c2f22 会把底下那几枚迷你棋子整块盖掉，看不见被吃了什么。
+   改成 22% 深色＋淡金描边，底下的棋子能透出来；图标用深色 text-shadow 压边，
+   无论压在米底明子还是灰底暗子上都读得清。 */
 #btnFs{position:absolute;z-index:45;pointer-events:auto;
   right:calc(22px + env(safe-area-inset-right,0px));
   bottom:calc(109px + env(safe-area-inset-bottom,0px));
   width:44px;height:44px;border-radius:11px;
-  background:#3c2f22;border:1px solid #55432f;color:#e8b872;font-size:17px;
-  box-shadow:0 2px 6px rgba(0,0,0,.5);
+  background:rgba(20,16,12,.22);border:1px solid rgba(232,184,114,.38);
+  color:#e8b872;font-size:17px;
+  text-shadow:0 1px 2px rgba(0,0,0,.85),0 0 3px rgba(0,0,0,.7);
+  box-shadow:0 1px 3px rgba(0,0,0,.30);
   display:flex;align-items:center;justify-content:center;padding:0;
   -webkit-tap-highlight-color:transparent}
-#btnFs:active{background:#55432f;transform:scale(.94)}
-#btnFs.on{background:#55432f;border-color:#e8b872;color:#ffd88a}
+#btnFs:active{background:rgba(85,67,47,.55);transform:scale(.94)}
+#btnFs.on{background:rgba(85,67,47,.42);border-color:#e8b872;color:#ffd88a}
 /* 版本号宽度：左 24px、右 70px。
    原先左右各 80px 只剩 160px 可用宽，装不下「当前引擎：8核多线程 · Hash 256MB · 版本号v1.5.0」。
    右边这 70px 是给右下角全屏键让位（键宽 44 + 距右 22 + 留白 4）：
@@ -414,8 +420,24 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .status{flex:0 0 auto;text-align:center;padding:5px 10px;font-size:13px;color:#d9c4a3;background:#1a1410;min-height:26px}
 .boardwrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:6px;min-height:0}
 .scorebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px; padding:5px 10px;font-size:12px;background:#1a1410;border-top:1px solid #332920}
-.caps{flex:0 0 auto;display:flex;gap:10px;padding:4px 10px;font-size:11px;color:#9c8a76;align-items:center;flex-wrap:wrap;background:#1a1410}
-.caps .grp{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+/* 0.5.33：红失／黑失改上下两行，顺序跟棋盘上下方一致；每行内部再分「暗」「明」两段。
+   Board.xy() 里 sr = G.flip ? r : (9-r)，红方格位 r=0 → flip=false 时 sr=9 排到屏幕最下方，
+   所以 flip=false = 黑在上红在下，flip=true 反过来。旋转按钮改 G.flip，这里跟着换（见 updateCaps）。
+   .pc 以前没有任何 CSS 规则，被吃的子就是裸文字，红黑、明暗全靠猜——这里一并补上。 */
+.caps{flex:0 0 auto;display:flex;flex-direction:column;gap:2px;padding:3px 10px;font-size:11px;color:#9c8a76;background:#1a1410}
+.caps .grp{display:flex;align-items:center;gap:2px;flex-wrap:wrap;line-height:1.35}
+.caps .lb{flex:0 0 auto;font-weight:700;letter-spacing:.5px;margin-right:5px}
+.caps .lb.red{color:#e0705f}
+.caps .lb.blk{color:#c0b096}
+/* 0.5.35：被吃的子改成画迷你棋子（canvas），不再用「暗／明」文字分段。
+   .cpc 就是那枚迷你棋子；尺寸固定 20px（1C）。gap 2px，满编 16 枚时 flex-wrap 自动换行，
+   换行只会让这一块变高、棋盘相应缩一点，不会溢出。 */
+.caps .cpc{display:inline-block;vertical-align:middle;border-radius:50%}
+/* 0.5.37：还没填写身份的那枚「?」—— 点它可以补填。
+   金色虚线圈 + 轻微放大，提示「这里能点」，同时跟已填好的（无圈）一眼分开。 */
+.caps .cpc.unk{outline:1px dashed rgba(232,196,110,.75);outline-offset:2px;cursor:pointer}
+.caps .cpc.unk:active{transform:scale(1.12)}
+.caps .none{color:#5f5346}
 .bottombar{flex:0 0 auto;display:flex;flex-wrap:wrap;gap:6px;padding:8px 10px calc(8px + env(safe-area-inset-bottom)); background:#1e1812;border-top:1px solid #3a2e22}
 .mask{position:fixed;inset:0;background:rgba(0,0,0,.72);display:flex;align-items:center;justify-content:center;padding:20px;z-index:70}
 /* 0.5.29：改子窗专用——背景不加暗。
@@ -480,10 +502,21 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 
 .edrow{display:flex;gap:6px}
 .pbtn{flex:1;min-width:0;background:linear-gradient(180deg,#2f2619,#282015);border:1px solid #4d3c28;
-  border-radius:10px;padding:5px 0;display:flex;align-items:center;justify-content:center;
+  border-radius:10px;padding:5px 0;display:flex;flex-direction:column;gap:2px;align-items:center;justify-content:center;
   cursor:pointer;-webkit-tap-highlight-color:transparent}
 .pbtn canvas{display:block}
+/* 0.5.32：每个兵种键下方标「暗 N」——该兵种还有几枚【暗着】的同色子（不含本格）。
+   跨平台对弈时对面平台才是权威，本程序开局随机发的暗子身份只是猜测；
+   改子会让某兵种多出来一枚，守恒置换就是靠这个数字告诉你「暗子里还有没有可换的」。 */
+.pbtn .pnum{display:block;font-size:11px;line-height:1.2;color:#c8b78a;white-space:nowrap}
 .pbtn:active{transform:scale(.94)}
+/* 0.5.37：填暗子窗里兵种键的高亮态 —— 点一下亮、再点一下熄灭（＝改错了、退回「?」）。
+   改成不透明金底 + 金色描边，跟暗底未选中的明显分开，手指小也能看清选了哪个。
+   0.5.38：选中态只靠这层高亮表达，下方不再写「已填」二字 —— 用户嫌多余，
+   那一行改显示「剩 N」（该兵种还有几枚没露身份，点下去就减 1）。 */
+.pbtn.on{background:linear-gradient(180deg,#6a4f22,#4a3717);border-color:#e8b872;
+  box-shadow:0 0 0 2px rgba(232,184,114,.40)}
+.pbtn.on .pnum{color:#ffe6b0}
 .swrow{display:flex;gap:8px}
 .swbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 0;
   border-radius:10px;background:#2c2318;border:1px solid #4d3c28;color:#f2e8da;font-size:14px;
@@ -669,7 +702,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 (function () {
 'use strict';
 const $ = (s) => document.querySelector(s);
-const JIEQI_VER = '0.5.31';
+const JIEQI_VER = '0.5.38';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -2299,7 +2332,12 @@ var Rules = (function(){
   function clone(s){
     var b=new Array(90);
     for(var i=0;i<90;i++) b[i] = s.board[i] ? { color:s.board[i].color, role:s.board[i].role, faceDown:s.board[i].faceDown } : null;
-    return { board:b, turn:s.turn, captures:s.captures.map(function(c){return {owner:c.owner,role:c.role,wasFaceDown:c.wasFaceDown};}),
+    /* 0.5.37：captures 多带两个字段 —— told（用户已告知这枚暗子的真实身份）
+       与 origRole（本程序开局随机发的原始身份，用户改填之后靠它退回「未告知」）。
+       悔棋存档必须带上，否则悔一步回来「已填过的暗子」会变回「?」、白填。 */
+    return { board:b, turn:s.turn,
+             captures:s.captures.map(function(c){return {owner:c.owner,role:c.role,wasFaceDown:c.wasFaceDown,
+               told:!!c.told, origRole:(c.origRole!==undefined?c.origRole:c.role)};}),
              noCap:s.noCap, ply:s.ply, over:s.over, lastMove:s.lastMove };
   }
   function effRole(p, idx){ return p.faceDown ? HOME[idx] : p.role; }
@@ -2584,8 +2622,11 @@ var Rules = (function(){
   }
   
   var POOL_INIT = { chariot:2, advisor:2, cannon:2, soldier:5, horse:2, elephant:2 };
-  
-  function poolField(s, viewer){
+
+  /* 0.5.38：把「已公开身份」的统计抽成独立函数，poolField（给引擎的暗子池）与
+     poolRemain（给弹窗显示的「剩 N」）共用同一份，两者永远同口径 ——
+     否则会出现弹窗写着「剩 3」、引擎实际按 2 算的错位。 */
+  function knownCount(s){
     var known = { red:{}, black:{} };
     for(var i=0;i<90;i++){
       var p=s.board[i];
@@ -2596,10 +2637,27 @@ var Rules = (function(){
     for(var k=0;k<s.captures.length;k++){
       var cp=s.captures[k];
       if(!cp) continue;
-      if(!cp.wasFaceDown && cp.role && cp.role!=='general'){
+      /* 0.5.37：用户已告知身份的暗子（told）按【明子】计入 known，池相应减少。
+         这是用户明确要的：告诉 AI「你刚吃掉的是车」，AI 就别再把它当成还藏在暗子池里。
+         wasFaceDown 仍为 true，只是公开口径改成「已知」。 */
+      if((!cp.wasFaceDown || cp.told) && cp.role && cp.role!=='general'){
         known[cp.owner][cp.role] = (known[cp.owner][cp.role]||0)+1;
       }
     }
+    return known;
+  }
+  /* 0.5.38：「填暗子」窗兵种键下方的「剩 N」——该兵种还有几枚身份未公开。
+     口径与 poolField 完全一致：总数 − 已公开（盘上明子 + 已告知身份的被吃子）。
+     所以用户点了某兵种（＝告知），这枚就计入已公开，该兵种「剩」立刻减 1；熄灭则加回。
+     注意数的是「没露身份的」，不是「还活着的」——被吃但还没告知的那枚仍算在里面。 */
+  function poolRemain(s, color, role){
+    if(!s) return 0;
+    var known = knownCount(s);
+    var n = (POOL_INIT[role]||0) - ((known[color]||{})[role]||0);
+    return n<0 ? 0 : n;
+  }
+  function poolField(s, viewer){
+    var known = knownCount(s);
     var out='';
     ['red','black'].forEach(function(col){
       POOL_ORDER.forEach(function(role){
@@ -2629,7 +2687,9 @@ var Rules = (function(){
     }
     var caps = s.captures.map(function(cp){
       
-      if(cp.owner===viewer && cp.wasFaceDown) return { owner:cp.owner, role:null, wasFaceDown:true };
+      /* 0.5.37：只有「自己的暗子被吃 且 还没告知身份」才藏成 ?。
+         用户填过（told）之后就照实显示，跟对方暗子被吃一个画法（灰底 + 真实兵种字）。 */
+      if(cp.owner===viewer && cp.wasFaceDown && !cp.told) return { owner:cp.owner, role:null, wasFaceDown:true };
       return { owner:cp.owner, role:cp.role, wasFaceDown:cp.wasFaceDown };
     });
     return { board:b, turn:s.turn, captures:caps, noCap:s.noCap, ply:s.ply, over:s.over, lastMove:s.lastMove };
@@ -2640,7 +2700,8 @@ var Rules = (function(){
     genRaw:genRaw, legalMoves:legalMoves, allLegal:allLegal, applyMove:applyMove,
     inCheck:inCheck, kingsFace:kingsFace, attacked:attacked, findGeneral:findGeneral,
     hasBothKings:hasBothKings,
-    toFen:toFen, idxToUci:idxToUci, uciToIdx:uciToIdx, viewFor:viewFor };
+    toFen:toFen, idxToUci:idxToUci, uciToIdx:uciToIdx, viewFor:viewFor,
+    poolRemain:poolRemain };
 })();
 
 var Board = {
@@ -2823,10 +2884,15 @@ var Board = {
       ctx.beginPath(); ctx.arc(xy[0],xy[1],R,0,Math.PI*2); ctx.stroke();
       ctx.strokeStyle='rgba(255,255,255,.22)'; ctx.lineWidth=Math.max(1,cell*0.03);
       ctx.beginPath(); ctx.arc(xy[0],xy[1],R*0.66,0,Math.PI*2); ctx.stroke();
-      ctx.fillStyle='rgba(255,255,255,.30)';
-      ctx.font='600 '+Math.round(cell*0.34)+'px system-ui,sans-serif';
+      /* 0.5.35：暗子中间那个字以前写死是 '?'。加一个可选的 p._fcn：
+         传了就画这个字（楷体、亮一点、大一点），不传还是 '?'。
+         红失／黑失那两行用它——暗着被吃的子画成「灰底双环 + 真实兵种字」。 */
+      var fc = p._fcn;
+      ctx.fillStyle = fc ? 'rgba(255,246,220,.96)' : 'rgba(255,255,255,.30)';
+      ctx.font = (fc ? '700 ' : '600 ') + Math.round(cell*(fc?0.46:0.34)) + 'px ' +
+                 (fc ? '"KaiTi","STKaiti","PingFang SC","Microsoft YaHei",serif' : 'system-ui,sans-serif');
       ctx.textAlign='center'; ctx.textBaseline='middle';
-      ctx.fillText('?', xy[0], xy[1]+1);
+      ctx.fillText(fc || '?', xy[0], xy[1]+1);
     } else {
       var red = p.color==='red';
       var g2=ctx.createRadialGradient(xy[0]-R*0.3, xy[1]-R*0.35, R*0.1, xy[0], xy[1], R);
@@ -3918,7 +3984,8 @@ function renderGame(){
     });}));
     /* 旋转：只翻显示朝向，红黑归属与 AI 执子都不变。
        Board.xy/pick 全读 G.flip，棋盘线、楚河汉界、棋子、选中框、走法提示一起翻。 */
-    var rbtn = mk('旋转', function(){ G.flip = !G.flip; Board.draw(); log('I','旋转 flip='+G.flip); });
+    /* 0.5.33：翻转后要重排「红失／黑失」两行的上下顺序，否则棋盘转了、这两行还停在老顺序。 */
+    var rbtn = mk('旋转', function(){ G.flip = !G.flip; Board.draw(); updateCaps(); log('I','旋转 flip='+G.flip); });
     rbtn.className = 'btn q';
     /* 0.5.27「询问」：与旋转同一排、同一个 .q 宽度，就放在旋转右边。
        默认灰底（关闭），点一下加 .pri 变橙底（亮起）。
@@ -4070,6 +4137,7 @@ function updateStatus(){
     var txt = (s.over.result==='draw80') ? '和棋（连续80步无吃子）' : (s.over.result==='drawMax') ? '和棋（200回合上限）'
       : ('<b>'+(w==='red'?'红方':'黑方')+'胜</b> · ' + (s.over.result==='checkmate'?'将死':s.over.result==='stalemate'?'困毙':'认输'));
     st.innerHTML = txt;
+    updateCaps();    /* 0.5.33：终局分支以前直接 return，最后一手吃子不会记进红失／黑失，补上 */
     return;
   }
   var turnTxt = s.turn==='red' ? '红方走' : '黑方走';
@@ -4084,20 +4152,56 @@ function updateStatus(){
   updateCaps();
 }
 
+/* 0.5.35：红失／黑失里那枚迷你棋子的边长（px）。固定 20（方案 1C）：
+   405 宽屏满编 16 枚需 20×16 + gap2×15 = 350，可用 354，刚好一行放得下；
+   386／320 宽的屏满编会换行（.caps .grp 有 flex-wrap），只是这一块变高、棋盘略缩，不溢出。 */
+var CAP_PC_SIZE = 20;
+
 function updateCaps(){
   try{ updateScoreBar(); }catch(e){}
   var box=document.getElementById('caps'); if(!box) return;
   box.innerHTML='';
   var view = G.viewState || G.state; if(!view) return;
-  ['red','black'].forEach(function(col){
+  /* 0.5.33：两行的上下顺序跟棋盘一致——上方那行必须是棋盘上方那一方。
+     flip=false → 黑上红下；flip=true → 红上黑下（推导见 .caps 的 CSS 注释）。
+     旋转按钮只改 G.flip，所以那里也要调一次本函数，否则棋盘转了、这两行不转。 */
+  var up = G.flip ? 'red' : 'black';
+  var order = [up, Rules.other(up)];
+  order.forEach(function(col){
     var grp=el('div','grp');
-    grp.appendChild(el('span','', col==='red'?'红失：':'黑失：'));
-    var list = view.captures.filter(function(c){ return c.owner===col; });
-    if(list.length===0){ grp.appendChild(el('span','','—')); }
-    list.forEach(function(c){
-      var cls = 'pc' + (col==='black'?' bk':'') + (c.role===null?' dk':'');
-      var sp=el('span',cls, c.role===null ? '?' : (Rules.ROLE_CN[c.role]?Rules.ROLE_CN[c.role][col]:'?'));
-      grp.appendChild(sp);
+    grp.appendChild(el('span','lb ' + (col==='red'?'red':'blk'), col==='red'?'红失':'黑失'));
+    /* 顺序就是被吃的先后：captures 是 Rules.applyMove 里 push 进去的，原样遍历即可。 */
+    /* 0.5.37：带原始下标遍历 —— filter 会丢索引，而点某枚「?」时要知道它对应
+       G.state.captures 的第几条（view.captures 与它是 1:1 map 出来的，下标一致）。 */
+    var _all = view.captures||[], list=[];
+    for(var _i=0;_i<_all.length;_i++){ if(_all[_i] && _all[_i].owner===col) list.push({ c:_all[_i], i:_i }); }
+    if(list.length===0){ grp.appendChild(el('span','none','—')); }
+    else list.forEach(function(it){
+      var c = it.c;
+      var cn = (c.role && Rules.ROLE_CN[c.role]) ? Rules.ROLE_CN[c.role][col] : null;
+      var cv=document.createElement('canvas');
+      cv.className='cpc';
+      cv.title = (col==='red'?'红':'黑') + '方·' + (c.wasFaceDown?'暗着':'明着') + '被吃' + (cn?('·'+cn):'·身份未知');
+      /* 0.5.37（1B）+ 0.5.38：自己这边的暗子被吃，点它就开「填写暗子」窗。
+         0.5.37 的判据多了一个「role 为空」，导致只认没填过的那枚 —— 一旦填了就不可点，
+         改错了想重填只能干瞪眼（用户实测：填完疯狂点失子区，弹窗不出来）。
+         0.5.38 去掉这个条件：填过的也要能点开重填。判据只剩「暗着被吃 + 是我这一方」，
+         不会误伤对方暗子（对方的 owner 不是 humanColor，本来就显示真实字、不可点）。 */
+      if(c.wasFaceDown && col===G.humanColor){
+        cv.classList.add('unk');
+        cv.title += (c.role ? '（点击修改）' : '（点击填写）');
+        cv.addEventListener('click', function(ev){
+          ev.stopPropagation();
+          openCaptureEditor(it.i);
+          Snd.tap();
+        });
+      }
+      grp.appendChild(cv);
+      /* 明着被吃 → 画一枚缩小版明子（米底＋兵种字＋红/黑描边）。
+         暗着被吃 → 画缩小版暗子（灰底双环），但把中间的「?」换成真实兵种字；
+         你自己那枚暗子被吃时 viewFor 返回 role:null，程序确实不知道那格藏的什么，仍是「?」。
+         所以一眼分得清：灰底＝暗着被吃，米底＝明着被吃；左右顺序＝被吃先后。 */
+      drawPieceIcon(cv, { color:col, role:(c.role||'soldier'), faceDown:!!c.wasFaceDown, _fcn:cn }, CAP_PC_SIZE);
     });
     box.appendChild(grp);
   });
@@ -4308,6 +4412,9 @@ function bindBoardTap(cv){
 /* ===== 改子：人机模式下连点棋子（或空格）两次弹出 ===== */
 var EDIT_ROLES = ['chariot','horse','cannon','elephant','advisor','soldier'];
 function drawPieceIcon(cv, p, size){
+  /* 0.5.35：p 上可带一个可选字段 _fcn —— 只在 p.faceDown 时生效，
+     用来把暗子中间的「?」换成指定汉字（红失／黑失里「暗着被吃」的画法）。
+     明子不用它，明子本来就画自己的兵种字。 */
   var dpr = window.devicePixelRatio||1;
   cv.width=Math.round(size*dpr); cv.height=Math.round(size*dpr);
   cv.style.width=size+'px'; cv.style.height=size+'px';
@@ -4384,6 +4491,31 @@ function bindEditDrag(box, mask){
   }
 }
 
+/* 0.5.32 守恒置换用的两个计数器（只对【暗着】的子计数，明子不计）。
+   countHiddenRole：给弹窗 6 个兵种键下方显示「暗 N」。
+   findHiddenRoleIdx：改子后找一个还暗着的同色同兵种子，把它换成被改掉的那个兵种。 */
+function countHiddenRole(color, role, excludeIdx){
+  var b = G.state && G.state.board; if(!b) return 0;
+  var n = 0;
+  for(var i=0;i<b.length;i++){
+    if(i===excludeIdx) continue;
+    var q = b[i];
+    if(q && q.faceDown && q.color===color && q.role===role) n++;
+  }
+  return n;
+}
+function findHiddenRoleIdx(color, role, excludeIdx){
+  var b = G.state && G.state.board; if(!b) return -1;
+  for(var i=0;i<b.length;i++){
+    if(i===excludeIdx) continue;
+    var q = b[i];
+    if(q && q.faceDown && q.color===color && q.role===role) return i;
+  }
+  return -1;
+}
+/* 弹窗还开着时的刷新入口：applyEdit 改完（含守恒置换）要把它调一遍，
+   「暗 N」才会跟着变。关闭时置空，避免对着已销毁的 DOM 调 sync。 */
+var editSyncFn = null;
 function openPieceEditor(idx, onClose){
   /* 0.5.27：可选的关闭回调，给「询问」自动弹窗用 —— 弹窗关掉之后才继续走 AI。
      包成「一次性」调用，且两处提前 return（非人机 / 将帅不可改）也必须触发它：
@@ -4420,6 +4552,7 @@ function openPieceEditor(idx, onClose){
     var btn = el('button','pbtn');
     var cv = document.createElement('canvas');
     btn.appendChild(cv);
+    btn.appendChild(el('span','pnum',''));       /* 0.5.32：兵种键下方的「暗 N」 */
     btn.setAttribute('data-role', role);
     btns.push(btn); r1.appendChild(btn);
   });
@@ -4460,12 +4593,16 @@ function openPieceEditor(idx, onClose){
     var canDark = !!Rules.HOME[idx];
     sw.dark.classList.toggle('on', isDark);
     sw.dark.disabled = isDark || !canDark;
-    titleEl.textContent = (p?'修改此子 · ':'新增棋子 · ')
+    var cur0 = G.state && G.state.board[idx];
+    titleEl.textContent = (cur0?'修改此子 · ':'新增棋子 · ')
       + (color==='red' ? '红方' : '黑方') + (isDark ? '暗子' : '明子') + ' · ' + Rules.idxToUci(idx);
     /* 2A：暗灯亮时 6 个兵种图标仍画成明子样式。棋盘上的暗子本来就是灰底「?」，
        弹窗里再全画「?」，选兵种时就完全看不出自己点的是车还是马了。 */
     btns.forEach(function(btn){
-      drawPieceIcon(btn.querySelector('canvas'), { color:color, role:btn.getAttribute('data-role'), faceDown:false }, 38);
+      var rr = btn.getAttribute('data-role');
+      drawPieceIcon(btn.querySelector('canvas'), { color:color, role:rr, faceDown:false }, 38);
+      var pn = btn.querySelector('.pnum');
+      if(pn) pn.textContent = '暗' + countHiddenRole(color, rr, idx);
     });
     tipEl.textContent = isDark ? '暗子按所在格位的本位兵种走，走一步自动翻开（按住空白处可拖开）'
       : (canDark ? '点兵种即改好，点「暗」改暗子；按住空白处可拖动；改完点右上角 ✕ 关闭'
@@ -4499,26 +4636,165 @@ function openPieceEditor(idx, onClose){
      别照抄上面 old.parentNode.remove() 的句式——那里 old 是弹窗本体，父节点才是遮罩，比这里差一级。 */
   xbtn.addEventListener('click', function(e){
     e.stopPropagation();
+    editSyncFn = null;      /* 0.5.32：弹窗没了，别再刷新它的「暗 N」 */
     mask.remove();
     log('T','弹窗关闭:点X', { i:idx, uci:Rules.idxToUci(idx) });
+    Snd.tap();
+    fireClose();
+  });
+  editSyncFn = sync;      /* 0.5.32：登记刷新入口，applyEdit 改完要重算「暗 N」 */
+  sync();
+}
+/* 0.5.37：「填写被吃的暗子」弹窗 —— 复用改子窗的外观与拖动，但落点完全不同。
+   为什么必须单开一个入口：openPieceEditor 改的是棋盘上的【格子】
+   （applyEdit 第一行就是 G.state.board[idx] = ...），而被吃的子已经离场、
+   不在任何格子里，直接复用会凭空造出一枚子。
+   这里改的是 G.state.captures[capIdx] 这条记录本身。
+
+   与棋盘改子窗的三处不同，都是用户指定的：
+   · 不建红/黑键 —— AI 吃掉的是我的子，颜色固定；少这两枚键还能让人一眼分清
+     眼前是「填暗子」窗还是「改子」窗。
+   · 不建「暗」键 —— 明暗由「有没有填」表达：填了画真实兵种字，没填就是灰底「?」。
+   · 兵种键是开关：点一下高亮并写入，再点一下熄灭 = 改错了、退回「?」。
+     ✕ 只是关闭，保持当前选择（填了就显示填的，没填就还是「?」）。 */
+function openCaptureEditor(capIdx, onClose){
+  /* 与 openPieceEditor 同款的一次性回调：包成「只触发一次」，
+     且下面每个提前 return 都必须触发它，否则调用方在等回调、AI 就卡住不走下一步。 */
+  function fireClose(){ if(typeof onClose==='function'){ var f=onClose; onClose=null; f(); } }
+  if(G.mode!=='pve' || !G.state){ fireClose(); return; }
+  var cp = G.state.captures[capIdx];
+  if(!cp || !cp.wasFaceDown){
+    log('T','填暗子窗拦:非暗着被吃', { i:capIdx }); fireClose(); return;
+  }
+  /* 首次打开时把本程序开局随机发的原始身份另存一份，
+     熄灭（改错了）时靠它退回未告知状态，不会把用户填错的兵种留在记录里。 */
+  if(cp.origRole===undefined) cp.origRole = cp.role;
+  var color = cp.owner;
+  log('T','填暗子窗打开', { i:capIdx, c:color, told:!!cp.told, role:cp.role });
+  var old = document.querySelector('.editbox');
+  if(old && old.parentNode) old.parentNode.remove();      /* 连开时先收掉上一个，避免遮罩叠加 */
+  var host = document.getElementById('stage') || document.body;
+  var mask = el('div','mask clear');   /* clear：背景不加暗，看得见棋盘 */
+  var box = el('div','editbox');
+  var xbtn = el('button','edx','✕');
+  xbtn.setAttribute('type','button');
+  xbtn.setAttribute('aria-label','关闭');
+  box.appendChild(xbtn);
+  var titleEl = el('div','tip','');
+  box.appendChild(titleEl);
+  var r1 = el('div','edrow'), btns=[];
+  EDIT_ROLES.forEach(function(role){
+    var btn = el('button','pbtn');
+    var cv = document.createElement('canvas');
+    btn.appendChild(cv);
+    btn.appendChild(el('span','pnum',''));
+    btn.setAttribute('data-role', role);
+    btns.push(btn); r1.appendChild(btn);
+  });
+  box.appendChild(r1);
+  var tipEl = el('div','tip','');
+  box.appendChild(tipEl);
+  mask.appendChild(box);
+  host.appendChild(mask);
+  bindEditDrag(box, mask);        /* 必须在入 DOM 之后再绑，getBoundingClientRect 才有值 */
+  function sync(){
+    var cur = G.state.captures[capIdx];
+    var filled = !!(cur && cur.told);
+    titleEl.textContent = '填写被吃的暗子 · ' + (color==='red' ? '红方' : '黑方')
+      + ' · 第' + (capIdx+1) + '枚'
+      + (filled ? ' · 已填：' + ((Rules.ROLE_CN[cur.role]||{})[color] || cur.role) : ' · 尚未填写');
+    btns.forEach(function(btn){
+      var rr = btn.getAttribute('data-role');
+      var on = filled && cur.role===rr;
+      btn.classList.toggle('on', on);          /* 高亮＝已选中；再点一下即熄灭 */
+      drawPieceIcon(btn.querySelector('canvas'), { color:color, role:rr, faceDown:false }, 38);
+      var pn = btn.querySelector('.pnum');
+      /* 0.5.38：下方一律显示「剩 N」——该兵种还有几枚身份没公开（与引擎看到的池同源）。
+         点某兵种＝告知，这枚计入已公开，该兵种「剩」当场减 1，看得见变化；
+         再点一下熄灭就加回。不再标「已填」：兵种键本身高亮就是已选中，加字反而挤。 */
+      if(pn) pn.textContent = '剩' + Rules.poolRemain(G.state, color, rr);
+    });
+    tipEl.textContent = filled
+      ? '下方「剩N」＝该兵种还没露身份的枚数；再点同一个＝熄灭（退回「?」）；点 ✕ 保持现在的填写'
+      : '点一个兵种＝告诉程序它是什么，下方「剩N」会减 1；不知道就点 ✕，保持「?」（按住空白处可拖开）';
+  }
+  btns.forEach(function(btn){
+    btn.addEventListener('click', function(e){
+      e.stopPropagation();
+      var rr = btn.getAttribute('data-role');
+      var cur = G.state.captures[capIdx]; if(!cur) return;
+      if(cur.told && cur.role===rr){
+        /* 熄灭＝改错了：退回未告知，失子区画回「?」，
+           且不再当作明子告诉 AI（poolField 只认 told 的，见那里）。 */
+        cur.role = (cur.origRole!==undefined ? cur.origRole : rr);
+        cur.told = false;
+        log('T','填暗子:熄灭', { i:capIdx });
+      }else{
+        cur.role = rr; cur.told = true;
+        log('T','填暗子:已填', { i:capIdx, role:rr });
+      }
+      /* viewFor 决定这枚显示真实字还是「?」，poolField 决定「告诉 AI」后暗子池少一枚，
+         两者都要按新口径重算，所以 viewState 必须重建、失子区必须重画。 */
+      G.viewState = Rules.viewFor(G.state, G.humanColor);
+      updateCaps();
+      sync(); Snd.tap();
+    });
+  });
+  xbtn.addEventListener('click', function(e){
+    e.stopPropagation();
+    var cur = G.state.captures[capIdx];
+    mask.remove();      /* 只删遮罩自己；写 parentNode.remove() 会把整个 #stage 删掉 */
+    log('T','填暗子窗关闭:点X', { i:capIdx, told:cur?!!cur.told:null, role:cur?cur.role:null });
     Snd.tap();
     fireClose();
   });
   sync();
 }
 function applyEdit(idx, color, role, faceDown){
+  var prev = G.state.board[idx];
+  var oldRole = prev ? prev.role : null;
+  var oldColor = prev ? prev.color : null;
   G.history.push(Rules.clone(G.state));                    /* 存档，改坏了可悔棋 */
   G.state.board[idx] = { color:color, role:role, faceDown:!!faceDown };
+  /* 0.5.32 守恒置换：跨平台对弈时对面平台才是权威，本程序开局随机发的暗子身份只是猜测。
+     真实平台翻出来是车 → 你把翻开的这枚改成车；可暗子里还藏着一枚「本程序以为是车」的子，
+     不处理的话后面必然再翻出第二辆车（实测：改两枚、吃掉、再翻，照样出车）。
+     守恒做法：改子让 role 多一枚、oldRole 少一枚，就找一个【还暗着】的同色 role 子
+     改成 oldRole，两个兵种各自加减相抵，总数纹丝不动。只换暗子——换明子你一眼就看见。
+     三种情况不做，且都在 toast 里明说，不静默：
+     · 兵种没变（oldRole===role）：本来就没增减；
+     · 改了归属色（红↔黑）：跨阵营置换会把两边池子都搅乱；
+     · 空格新增（prev 为空）：没有 oldRole 可以补回去。 */
+  var swapIdx = -1, note = '';
+  if(!prev){
+    note = '空格新增子，未做守恒';
+  } else if(oldRole && oldRole !== role){
+    if(oldColor && oldColor !== color){
+      note = '改了归属色，未做守恒';
+    } else {
+      var cnNew = (Rules.ROLE_CN[role] && Rules.ROLE_CN[role][color]) || role;
+      var cnOld = (Rules.ROLE_CN[oldRole] && Rules.ROLE_CN[oldRole][color]) || oldRole;
+      swapIdx = findHiddenRoleIdx(color, role, idx);
+      if(swapIdx >= 0){
+        G.state.board[swapIdx] = { color:color, role:oldRole, faceDown:true };
+        note = '已把暗子 ' + Rules.idxToUci(swapIdx) + ' 换成' + cnOld + '，' + cnNew + '数量不变';
+      } else {
+        note = '暗子中已无' + cnNew + '可换，' + cnNew + '数量已增加';
+      }
+    }
+  }
   G.sel=null; G.moves=[];
   G.viewState = Rules.viewFor(G.state, G.humanColor);
   Board.draw(); updateStatus();
-  log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role, faceDown:!!faceDown });
+  log('I','改子', { uci:Rules.idxToUci(idx), color:color, role:role, faceDown:!!faceDown,
+    oldRole:oldRole, swap: swapIdx>=0 ? (Rules.idxToUci(swapIdx)+'→'+oldRole) : null });
   /* 改完【不关窗】：用户要「改好 → 点 ✕ → 接着改别的子」。
      自动关窗会让人看不见结果，且下一个子的连点要重新起算。
      .mask 是铺满屏幕的 72% 黑遮罩，但已取消点框外关闭，弹窗会一直等你点 ✕。 */
   var cn = (Rules.ROLE_CN[role] && Rules.ROLE_CN[role][color]) || role;
   toast('已改为 ' + (color === 'red' ? '红' : '黑') + (faceDown ? '暗' : '') + cn
-    + (faceDown ? '，走一步后翻开' : '') + '，点 ✕ 可继续改别的子');
+    + (faceDown ? '，走一步后翻开' : '') + (note ? '；' + note : '') + '，点 ✕ 可继续改别的子');
+  if(editSyncFn) editSyncFn();   /* 弹窗还开着：把「暗 N」刷新成置换之后的新数字 */
 }
 function doMove(from, to){
   var legal = Rules.legalMoves(G.state, from);
@@ -4727,12 +5003,31 @@ async function aiTurn(){
     else r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
   }catch(e){ log('E','AI搜索异常',{msg:e.message}); r=null; }
 
-  /* 0.5.30：结果到手再比一次代次；顺带认 ENGINE 自己的 aborted（token 被 stop 顶掉）。
-     两个都要：aborted 挡的是"这次搜索被 stop"，代次挡的是"悔棋卡在两次 await 缝隙里、
-     新搜索拿到全新 token 所以 aborted=false"这种情况。 */
-  if(G.gen!==myGen || (r && r.aborted)){
+  /* 0.5.34：命中后台思考时，aborted 是"我自己 stop 出来的"，它算的就是当前局面、结果完全有效。
+     0.5.30 把这种 aborted 当废票丢掉 → AI 再也不走子，游戏卡死（真机日志 0.5.33：
+     51993|I AI思考作废·结果丢弃 {"gen":0,"myGen":0,"aborted":true} —— gen 没变，纯靠 aborted 判死）。
+     所以命中豁免 aborted。 */
+  if(usedPonder && r && r.aborted){
+    log('I','后台思考命中·aborted系主动停止，结果有效', { best:r.best });
+    r.aborted = false;
+  }
+  /* 0.5.30：代次失配 → 结果作废，不能在悔过的盘面上落子。这条是对的，保留。 */
+  if(G.gen!==myGen){
     log('I','AI思考作废·结果丢弃', { gen:G.gen, myGen:myGen, aborted:!!(r&&r.aborted) });
     G.thinking=false; updateStatus(); return;
+  }
+  /* 0.5.34：非命中却 aborted = 搜索被中断（多是被悔棋 stop 掉的）。
+     0.5.30 在这里直接 return，轮到 AI 的局面就永远卡住。改成重搜一次，
+     重搜还拿不到就走兜底着法 —— 最差是 AI 走一步弱手，不会卡死。 */
+  if(r && r.aborted){
+    log('W','AI搜索被中断，重搜一次', { gen:G.gen, myGen:myGen });
+    try{
+      r = await ENGINE.search(fen, lv.depth?{depth:lv.depth}:{movetime:lv.movetime});
+    }catch(e){ log('E','AI重搜异常', { msg:e.message }); r=null; }
+    if(G.gen!==myGen){
+      log('I','AI思考作废·重搜后', { gen:G.gen, myGen:myGen });
+      G.thinking=false; updateStatus(); return;
+    }
   }
   G.thinking=false;
   /* 解析 + 非法兜底走公共函数（与机器人两条链路同一套逻辑） */
@@ -4764,9 +5059,34 @@ function applyAi(from, to, fallback){
   /* 0.5.27「询问」：AI 走暗子翻开 → 同样弹窗（与玩家侧同一套 openPieceEditor）。
      后台思考压到关窗之后再启：否则你正改着 AI 刚翻出来的子，引擎在后台按旧局面猛搜，
      白烧 CPU，且算出来的预测着法对不上改完的局面。 */
+  /* 0.5.37：AI 这一步可能同时撞上两类弹窗 —— 它自己翻开了暗子（改子窗）、
+     它吃掉了我的暗子（填暗子窗）。串行依次弹：关掉一个才弹下一个，
+     全关完才 goPonder，否则引擎会按「还没填完身份」的旧局面在后台空搜。
+     为什么填暗子窗受 G.askEdit 控制：这是用户最初定的语境——
+     「询问」开着才自动问；关着时不打扰，但仍可随时点失子区那枚「?」补填（1B）。 */
+  var _steps = [];
   if(G.askEdit && res.evt.revealed){
-    setTimeout(function(){ openPieceEditor(to, goPonder); }, 300);
-  } else goPonder();
+    _steps.push(function(next){ setTimeout(function(){ openPieceEditor(to, next); }, 300); });
+  }
+  var _cap = res.evt.captured;
+  if(G.askEdit && _cap && _cap.owner===G.humanColor && _cap.wasFaceDown){
+    var _ci = G.state.captures.length - 1;   /* applyMove 刚 push 进去的那条就是它 */
+    _steps.push(function(next){ setTimeout(function(){ openCaptureEditor(_ci, next); }, 300); });
+  }
+  if(_steps.length){ runEditSteps(_steps, goPonder); return; }
+  goPonder();
+}
+
+/* 0.5.37：把若干「弹一步」串起来依次执行的小工具。每项形如 function(next){...}，
+   必须自己调 next() 才走到下一项；跑完调 done。
+   不能用一串 setTimeout 连写——每个弹窗什么时候关由用户点 ✕ 决定，只能靠回调驱动。 */
+function runEditSteps(steps, done){
+  var i = 0;
+  (function next(){
+    if(i >= steps.length){ if(typeof done==='function') done(); return; }
+    var s = steps[i++];
+    s(next);
+  })();
 }
 
 
