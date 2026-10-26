@@ -321,6 +321,11 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .status{flex:0 0 auto;text-align:center;padding:5px 10px;font-size:13px;color:#d9c4a3;background:#1a1410;min-height:26px}
 .boardwrap{flex:1 1 auto;display:flex;align-items:center;justify-content:center;padding:6px;min-height:0}
 .scorebar{flex:0 0 auto;display:flex;align-items:center;justify-content:center;gap:8px; padding:5px 10px;font-size:12px;background:#1a1410;border-top:1px solid #332920}
+/* 最近四步：贴在棋盘正下方、失子区上方。红方走子用红字、黑方用浅米白——
+   底色是 #1a1410 的极深棕，纯黑字在上面等于隐形，所以"黑方"用浅色而不是黑色。 */
+.moves4{flex:0 0 auto;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:2px 10px;padding:2px 10px 3px;font-size:12px;font-weight:700;background:#1a1410}
+.moves4 .mv.red{color:#e0705f}
+.moves4 .mv.blk{color:#c0b096}
 .caps{flex:0 0 auto;display:flex;flex-direction:column;gap:2px;padding:3px 10px;font-size:11px;color:#9c8a76;background:#1a1410}
 .caps .grp{display:flex;align-items:center;gap:2px;flex-wrap:wrap;line-height:1.35}
 .caps .lb{flex:0 0 auto;font-weight:700;letter-spacing:.5px;margin-right:5px}
@@ -384,6 +389,10 @@ html,body{margin:0;padding:0;height:100%;width:100%;overflow:hidden;background:#
 .pbtn.on{background:linear-gradient(180deg,#6a4f22,#4a3717);border-color:#e8b872;
   box-shadow:0 0 0 2px rgba(232,184,114,.40)}
 .pbtn.on .pnum{color:#ffe6b0}
+/* 0.0.2（2A）：该兵种已无剩余（身份已全部公开）时置灰。
+   用 class 而不是 disabled——disabled 的按钮不触发 click，就弹不出提示告诉用户为什么点不动。 */
+.pbtn.off{opacity:.30;filter:grayscale(1);cursor:not-allowed}
+.pbtn.off:active{transform:none}
 .swrow{display:flex;gap:8px}
 .swbtn{flex:1;display:flex;align-items:center;justify-content:center;gap:7px;padding:9px 0;
   border-radius:10px;background:#2c2318;border:1px solid #4d3c28;color:#f2e8da;font-size:14px;
@@ -521,7 +530,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
       <button id="btnLog" type="button">诊断日志</button>
       <div class="dgrp">
         <h4>音效</h4>
-        <div class="dit"><div class="tt"><b>游戏音效</b><span>落子、翻子、吃子、将军、胜负等实时合成音</span></div>
+        <div class="dit"><div class="tt"><b>语音播报</b><span>红黑两套真人录音：点子、走子、吃子、将军、胜负（首次开启需下载约 514KB）</span></div>
           <div class="sw" id="swSound"></div></div>
         <div class="dit dit-rng" id="rowVol"><div class="drng"><span class="lab" id="volVal">100%</span>
           <div class="sld" id="rgVol" data-min="0" data-max="100" data-val="100">
@@ -570,7 +579,7 @@ canvas{display:block;border-radius:6px;box-shadow:0 4px 20px rgba(0,0,0,.5);touc
 'use strict';
 const $ = (s) => document.querySelector(s);
 /* 0.0.1 起版本体系改为三位、从 0.0.1 起算（9 进 1、末位遇 4 跳过）。注释里更早的 0.5.x 是旧编号，仅作历史痕迹保留。 */
-const JIEQI_VER = '0.0.1';
+const JIEQI_VER = '0.1.0';
 const HALL_URL = 'https://kevin-jili.github.io/html-ck/jili-game.html';
 
 let toastTimer = 0;
@@ -712,6 +721,15 @@ const UI = {
     /* 打开游戏立即开始预载引擎（用户选 1B）：让进人机时引擎已就绪。
        有缓存时直接读 IndexedDB，不发网络请求；失败只更新页脚文案，不弹框打扰。 */
     this.startPreload();
+    /* 语音包同样「打开游戏就下载」：不能靠 Snd.seq 的懒加载——那条只在第一次
+       发声时才触发，开局第一句必丢，且 514KB 下载期间后续每一句都静音。
+       有缓存时直接读 IndexedDB，不发网络请求；失败只记日志 + 一行轻提示。 */
+    if(typeof Snd !== 'undefined' && ST.sound){
+      Snd.load().catch(function(e){
+        log('W','启动语音下载失败', { msg:String(e&&e.message||e).slice(0,80) });
+        if(!Snd.cached && typeof toast === 'function') toast('语音包下载失败，可到设置→语音播报重试');
+      });
+    }
     /* 缓存大小异步读一次，用于「未下载 / 已缓存 N KB」分支 */
     this.refreshCacheInfo();
   },
@@ -841,7 +859,19 @@ const UI = {
     $('#swSound').addEventListener('click', () => {
       ST.sound = !ST.sound; savePrefs(); LOG.add('R', 'sound=' + (ST.sound ? 1 : 0));
       this.syncSettings();
-      if (ST.sound) Snd.tap();
+      /* 语音包必须在这里 unlock + 起下载：音频上下文要由用户手势创建，
+         而 Snd.seq 虽会补 load，但那会把开启后的第一句棋步丢掉。 */
+      if (ST.sound) {
+        Snd.unlock();
+        if (Snd.ready) Snd.tap();
+        else {
+          toast('语音已开，正在下载语音包…');
+          Snd.load().catch(() => {}).then(() => {
+            if (Snd.ready) toast('语音包就绪', 'ok');
+            else toast('语音包下载失败，稍后重试', 'bad');
+          });
+        }
+      } else toast('语音已关');
     });
     /* 反馈类型：'vol' 音量 / 空 = 无反馈。
        抄自 jieqi 1.0 的 dRange：拖动时每 120ms 给一次「当前档位」的实感
@@ -929,6 +959,7 @@ const UI = {
   /* ---------- 测试模式抽屉 ---------- */
   openTest() {
     this.renderTestInfo();
+    Tts.load(() => this.renderTtsList());
     $('#tmask').classList.add('open');
     $('#tpanel').classList.add('open');
     LOG.add('P', 'test_panel=1');
@@ -2017,8 +2048,44 @@ function infoBox(msg){
   return modalBox(msg, [ { txt:'知道了', pri:true } ]);
 }
 
+/* 0.0.8：语音播报。删掉整套实时合成音（osc/noise），改为仓库里的真人语音包
+   （49 个 wav：红一套、黑一套 + 点击/吃子/将军/胜负）。
+   棋步文本（moveToChinese 产出的「馬八进七」「砲8平6」）逐字映射成文件名后依次播放，
+   所以红方用红录音、黑方用黑录音，天然是「两个人的声音」。
+   首次开启时按 2A 策略下载：先用最小的 dj.wav 跑一次全源赛马定出最快源，
+   其余 48 个用该源并发 4 路拉取，个别失败再回退赛马；之后存 IndexedDB，不再下。 */
+var VC_ROLE = {车:'r',車:'r',馬:'n',马:'n',炮:'c',砲:'c',相:'b',象:'b',仕:'a',士:'a',帥:'k',帅:'k',將:'k',将:'k',兵:'p',卒:'p'};
+var VC_NUM  = {'一':1,'二':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9,
+               '1':1,'2':2,'3':3,'4':4,'5':5,'6':6,'7':7,'8':8,'9':9};
+var VC_ACT  = {进:'da',退:'dr',平:'dt'};
+var VC_POS  = {前:'df',后:'db',中:'dm'};
+/* 同列同名子 ≥3 枚时记谱写「一/二/三」表前/中/后；≥4 枚退化为阿拉伯数字，取不到
+   对应读音就按「后」播——这种局面极少，播错也不影响理解。 */
+var VC_MID  = {一:'df',二:'dm',三:'db','1':'df','2':'dm','3':'db'};
+
+function vcSeq(txt, color){
+  var p = (color==='red') ? 'r' : 'b', out = [], i, ch, v;
+  if(!txt) return out;
+  for(i=0;i<txt.length;i++){
+    ch = txt.charAt(i);
+    if(i===0){                                    /* 首字符只可能是前/后/中 或其数字写法 */
+      v = VC_POS[ch] || VC_MID[ch];
+      if(v){ out.push(p+v); continue; }
+      if(VC_NUM[ch]!=null){ out.push(p+(VC_MID[ch]||'db')); continue; }
+    }
+    v = VC_ROLE[ch]; if(v){ out.push(p+v); continue; }
+    v = VC_NUM[ch];  if(v){ out.push(p+v); continue; }
+    v = VC_ACT[ch];  if(v){ out.push(p+v); continue; }
+    v = VC_POS[ch];  if(v){ out.push(p+v); continue; }
+  }
+  return out;
+}
+
 var Snd = {
-  ctx:null, master:null, noiseBuf:null,
+  ctx:null, master:null, buf:{}, ready:false, loading:false, src:null, miss:0,
+  /* cached：49 个 wav 已落 IndexedDB（可能还没解码）；
+     pending：下载期间被 seq 丢下的那句，就绪后补播一次。 */
+  cached:false, pending:null,
   unlock: function(){
     try{
       if(!this.ctx){
@@ -2030,67 +2097,124 @@ var Snd = {
         this.master.connect(this.ctx.destination);
       }
       if(this.ctx.state === 'suspended') this.ctx.resume();
+      /* 打开游戏即下载那条路径下，下载完成时可能还没有 ctx（严格内核要等手势），
+         只落了缓存没解码。手势一到就在这里补解码，用户不必手动重试。 */
+      if(this.cached && !this.ready && !this.loading) this.load().catch(function(){});
     }catch(e){ log('W','音频初始化失败',{msg:e.message}); }
   },
   setVolume: function(){ try{ if(this.master) this.master.gain.value = (ST.volume/100)*0.9; }catch(e){} },
-  tone: function(o){
-    if(!ST.sound || !this.ctx) return;
-    try{
-      var t0 = this.ctx.currentTime + (o.delay||0);
-      var osc = this.ctx.createOscillator(), g = this.ctx.createGain();
-      osc.type = o.type || 'sine';
-      osc.frequency.setValueAtTime(o.f, t0);
-      if(o.f2) osc.frequency.exponentialRampToValueAtTime(Math.max(20,o.f2), t0+o.dur);
-      var peak = (o.gain==null ? 0.25 : o.gain);
-      g.gain.setValueAtTime(0.0001, t0);
-      g.gain.exponentialRampToValueAtTime(peak, t0+Math.min(0.02, o.dur*0.25));
-      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
-      var node = osc;
-      if(o.lp){ var f=this.ctx.createBiquadFilter(); f.type='lowpass'; f.frequency.value=o.lp; node.connect(f); node=f; }
-      node.connect(g); g.connect(this.master);
-      osc.start(t0); osc.stop(t0+o.dur+0.05);
-    }catch(e){}
-  },
-  noise: function(o){
-    if(!ST.sound || !this.ctx) return;
-    try{
-      var t0 = this.ctx.currentTime + (o.delay||0);
-      var len = Math.max(1, Math.floor(this.ctx.sampleRate * o.dur));
-      if(!this.noiseBuf || this.noiseBuf.length < len){
-        this.noiseBuf = this.ctx.createBuffer(1, len, this.ctx.sampleRate);
-        var dd = this.noiseBuf.getChannelData(0);
-        for(var i=0;i<len;i++) dd[i] = Math.random()*2-1;
+  /* 下载：探针选源 → 并发拉取 → 全部落 IndexedDB，返回 {名:ArrayBuffer}。
+     这一步不碰 AudioContext，所以「打开游戏就下载」不必等用户手势。 */
+  _fetchAll: async function(){
+    var probe = null, self = this, raw = {};
+    /* dj 已在库里就直接用，连探针都不发：否则断网时即便 49 个文件全缓存过，
+       也会因为探针失败而整体放弃，白存一堆缓存却永远播不出声。 */
+    try{ probe = await Cache.get('voice/dj.wav'); }catch(e){ probe = null; }
+    if(probe && probe.byteLength){ raw.dj = probe; }
+    else {
+      try{ probe = await raceFile(vcFile('dj'), VOICE_SOURCES); }
+      catch(e){ log('W','语音探针全源失败',{msg:String(e&&e.message||e).slice(0,80)}); return null; }
+      this.src = probe.source;
+      log('I','语音源选定', { source:this.src.label });
+      raw.dj = probe.buf;
+      await Cache.put('voice/dj.wav', probe.buf);
+    }
+    var rest = VC_LIST.filter(function(n){ return n!=='dj'; });
+    var idx = 0;
+    await Promise.all([0,1,2,3].map(async function(){
+      for(;;){
+        var n = rest[idx++]; if(n===undefined) return;
+        var buf = null;
+        try{
+          var c = await Cache.get('voice/'+vcFile(n));
+          if(c && c.byteLength) buf = c;
+          else if(self.src){
+            /* 单源并发会撞限流（实测 jsDelivr 有 502），先等一拍重试一次，
+               再不行才回退全源赛马。 */
+            try{ buf = await fetchStream(self.src.url + vcFile(n), null, null); }
+            catch(e1){ await new Promise(function(r){ setTimeout(r, 500); });
+                       buf = await fetchStream(self.src.url + vcFile(n), null, null); }
+            await Cache.put('voice/'+vcFile(n), buf);
+          }
+        }catch(e){ buf = null; }
+        /* 缓存没有、或还没定源（全缓存命中的第二次调用就是这种）→ 全源赛马兜底 */
+        if(!buf){
+          try{ buf = (await raceFile(vcFile(n), VOICE_SOURCES)).buf; await Cache.put('voice/'+vcFile(n), buf); }
+          catch(e2){ self.miss++; buf = null; }
+        }
+        if(buf) raw[n] = buf;
       }
-      var src = this.ctx.createBufferSource(); src.buffer = this.noiseBuf;
-      var f = this.ctx.createBiquadFilter(); f.type = o.hp ? 'highpass' : 'lowpass';
-      f.frequency.value = o.freq || 1000;
-      var g = this.ctx.createGain();
-      g.gain.setValueAtTime(o.gain==null?0.3:o.gain, t0);
-      g.gain.exponentialRampToValueAtTime(0.0001, t0+o.dur);
-      src.connect(f); f.connect(g); g.connect(this.master);
-      src.start(t0); src.stop(t0+o.dur+0.02);
+    }));
+    return raw;
+  },
+  /* 下载 + 解码进内存（内存里存解码后的 AudioBuffer，播放零延迟）。
+     有缓存时 _fetchAll 直接读 IndexedDB，不发网络请求。 */
+  load: async function(){
+    if(this.ready || this.loading) return;
+    this.loading = true;
+    this.unlock();
+    try{
+      var raw = await this._fetchAll();
+      if(!raw){ log('W','语音包下载失败', { miss:this.miss }); return; }
+      this.cached = true;
+      /* 严格内核（iOS）在用户手势前不给建 AudioContext：这一轮只落缓存，
+         等第一次手势 unlock 时再补解码，照样做到「打开游戏就下载」。 */
+      if(!this.ctx){ log('I','语音包已缓存，待手势后解码', { got:Object.keys(raw).length }); return; }
+      for(var n in raw){ await this._decode(n, raw[n]); }
+      this.ready = true;
+      log('I','语音包就绪', { got:Object.keys(this.buf).length, miss:this.miss, source:this.src.label });
+      this._flush();
+    }finally{ this.loading = false; }
+  },
+  /* 下载期间被丢下的那句，就绪后补播一次（只留最后一句，不排队）。 */
+  _flush: function(){
+    var p = this.pending; this.pending = null;
+    if(p && p.length) this.seq(p);
+  },
+  _decode: async function(n, buf){
+    if(!this.ctx || !buf) return;
+    try{ this.buf[n] = await this.ctx.decodeAudioData(buf.slice(0)); }catch(e){}
+  },
+  /* 依次播放：用 currentTime 排时间轴，段间不留缝。 */
+  seq: function(names){
+    if(!ST.sound) return;
+    /* 未就绪：起下载（幂等），并把这句记下来，下完补播——否则开局第一句必丢。 */
+    if(!this.ready){
+      if(names && names.length) this.pending = names;
+      if(!this.loading && ST.sound) this.load().catch(function(){});
+      return;
+    }
+    this.unlock();
+    if(!this.ctx) return;
+    try{
+      var t = this.ctx.currentTime + 0.01, self = this, any = false;
+      names.forEach(function(n){
+        var b = self.buf[n]; if(!b) return;
+        var s = self.ctx.createBufferSource();
+        s.buffer = b; s.connect(self.master); s.start(t);
+        t += b.duration; any = true;
+      });
+      return any;
     }catch(e){}
   },
-  
-  tap:    function(){ this.unlock(); this.tone({f:1180,f2:900,dur:0.05,type:'sine',gain:0.12}); },
-  move:   function(){ this.unlock(); this.noise({dur:0.055,freq:1800,hp:true,gain:0.34}); this.tone({f:220,f2:110,dur:0.1,type:'sine',gain:0.30}); },
-  reveal: function(){ this.unlock();
-            this.noise({dur:0.07,freq:3000,hp:true,gain:0.20});
-            this.tone({f:1046,dur:0.20,type:'triangle',gain:0.24});
-            this.tone({f:1568,dur:0.26,type:'sine',gain:0.16,delay:0.05}); },
-  capture:function(){ this.unlock();
-            this.noise({dur:0.09,freq:900,gain:0.30});
-            this.tone({f:180,f2:90,dur:0.16,type:'sawtooth',gain:0.20,lp:1200}); },
-  check:  function(){ this.unlock();
-            this.tone({f:880,dur:0.10,type:'square',gain:0.16});
-            this.tone({f:1174,dur:0.14,type:'square',gain:0.14,delay:0.11}); },
-  undo:   function(){ this.unlock(); this.tone({f:700,f2:380,dur:0.12,type:'triangle',gain:0.16}); },
-  win:    function(){ this.unlock();
-            [523,659,784,1046].forEach(function(f,i){ Snd.tone({f:f,dur:0.22,type:'triangle',gain:0.22,delay:i*0.13}); }); },
-  lose:   function(){ this.unlock();
-            this.tone({f:392,dur:0.26,type:'sawtooth',gain:0.18,lp:900});
-            this.tone({f:294,dur:0.34,type:'sawtooth',gain:0.16,delay:0.20,lp:800}); },
-  draw:   function(){ this.unlock(); this.tone({f:440,dur:0.20,type:'square',gain:0.14}); }
+  /* 播一步棋：extra 前置（吃子/将军提示音），再念棋步本身。 */
+  say: function(last, extra){
+    if(!ST.sound) return;
+    var arr = [];
+    if(extra) arr.push(extra);
+    if(last && last.txt) arr = arr.concat(vcSeq(last.txt, last.color));
+    if(arr.length) this.seq(arr);
+  },
+  tap:    function(){ this.seq(['dj']); },
+  move:   function(){ this.say(this._last()); },
+  reveal: function(){ this.say(this._last()); },
+  capture:function(){ this.say(this._last(), 'chi'); },
+  check:  function(){ this.seq(['jj']); },
+  undo:   function(){ this.seq(['dj']); },
+  win:    function(){ this.seq(['WIN']); },
+  lose:   function(){ this.seq(['LOSS']); },
+  draw:   function(){},
+  _last:  function(){ return (G.mvLog && G.mvLog.length) ? G.mvLog[G.mvLog.length-1] : null; }
 };
 
 var LEVELS = {
@@ -2760,6 +2884,32 @@ var ENGINE_SOURCES = [
   { id:'hkproxy',   label:'hk.gh-proxy.org',  url:'https://hk.gh-proxy.org/'+GH_RAW }
 ];
 var SOURCE_COUNT = ENGINE_SOURCES.length;
+
+/* 0.0.8：真人语音包（49 个 wav），红一套黑一套，与引擎同一套镜像源。
+   路径在仓库 XiangQi/Sound/ 下，与引擎目录平级，镜像加速照常通用。 */
+var SOUND_GH = 'https://raw.githubusercontent.com/kevin-jili/html-ck/main/XiangQi/Sound/';
+var VOICE_SOURCES = [
+  { id:'jsdelivr', label:'cdn.jsdelivr',     url:'https://cdn.jsdelivr.net/gh/kevin-jili/html-ck@main/XiangQi/Sound/' },
+  { id:'same',     label:'本站同源',          url:'./XiangQi/Sound/' },
+  { id:'raw',      label:'raw.githubusercontent', url:SOUND_GH },
+  { id:'fastly',   label:'fastly.jsdelivr',  url:'https://fastly.jsdelivr.net/gh/kevin-jili/html-ck@main/XiangQi/Sound/' },
+  { id:'xxooo',    label:'gh.xxooo.cf',      url:'https://gh.xxooo.cf/'+SOUND_GH },
+  { id:'llkk',     label:'gh.llkk.cc',       url:'https://gh.llkk.cc/'+SOUND_GH },
+  { id:'ghproxy',  label:'gh-proxy.com',     url:'https://gh-proxy.com/'+SOUND_GH },
+  { id:'ghfast',   label:'ghfast.top',       url:'https://ghfast.top/'+SOUND_GH },
+  { id:'hkproxy',  label:'hk.gh-proxy.org',  url:'https://hk.gh-proxy.org/'+SOUND_GH }
+];
+/* 49 个：红 23（r1~r9 + ra rb rc rda rdb rdf rdm rdr rdt rk rn rp rr）、黑 23、
+   公共 3（dj 点击 / chi 吃子 / jj 将军）+ WIN/LOSS。大小写按仓库实际文件名。 */
+var VC_LIST = (function(){
+  var a=[];
+  ['r','b'].forEach(function(p){
+    for(var i=1;i<=9;i++) a.push(p+i);
+    ['a','b','c','da','db','df','dm','dr','dt','k','n','p','r'].forEach(function(s){ a.push(p+s); });
+  });
+  return a.concat(['dj','chi','jj','WIN','LOSS']);
+})();
+function vcFile(n){ return (n==='WIN'||n==='LOSS') ? n+'.WAV' : n+'.wav'; }
 
 var Cache = {
   db:null, name:'jieqi_engine_cache', store:'files',
@@ -3719,6 +3869,8 @@ function renderGame(){
   mid.appendChild(wrap);
   var sb = el('div','scorebar'); sb.id='scorebar'; sb.style.display='none';
   mid.appendChild(sb);
+  var mv4 = el('div','moves4'); mv4.id='moves4';
+  mid.appendChild(mv4);
   var caps = el('div','caps'); caps.id='caps';
   mid.appendChild(caps);
   app.appendChild(mid);
@@ -3744,6 +3896,9 @@ function renderGame(){
     });
     abtn.className = 'btn q';
     if(G.askEdit) abtn.classList.add('pri');
+    /* 语音开关在设置面板的「音效 → 语音播报」里，不占底栏位。
+       语音包在 UI.init 里已随打开游戏下载，这里的回调负责 unlock（音频上下文要由
+       用户手势创建）+ 兜底重试（上次下载失败、或中途关过开关重新打开）。 */
     bb.appendChild(el('i','br'));
     bb.appendChild(rbtn);
     bb.appendChild(abtn);
@@ -3897,8 +4052,86 @@ updateCaps();
 
 var CAP_PC_SIZE = 20;
 
+/* 最近四步走子记录。
+   纵线号：红方从自己的右手边往左数（一二…九），黑方同理从它自己的右手边数。
+   本文件里 col 0 在数组左侧、红方在 row 0：红方自己的右手边就是 col 8，所以红纵线号 = 9-col；
+   黑方在 row 9、它自己的右手边是 col 0，所以黑纵线号 = col+1。
+   红汉字、黑阿拉伯是传统写法（炮二平五 / 炮2平5）。
+   暗子按【走子当时】的走法记：暗着时走的是格位兵种（Rules.HOME），翻开后是什么不影响这一步的记法。 */
+var MV_CN_NUM = ['一','二','三','四','五','六','七','八','九'];
+var MV_AR_NUM = ['1','2','3','4','5','6','7','8','9'];
+
+function mvFile(color, c){ return color==='red' ? (9-c) : (c+1); }
+function mvNum(color, n){
+  if(n<1) n=1; if(n>9) n=9;
+  return color==='red' ? MV_CN_NUM[n-1] : MV_AR_NUM[n-1];
+}
+
+function moveToChinese(board, from, to, color){
+  if(!board) return '';
+  var r0=(from/9)|0, c0=from%9, r1=(to/9)|0, c1=to%9;
+  var p = board[from];
+  if(!p) return '';
+  var role = p.faceDown ? Rules.HOME[from] : p.role;
+  var cn = (Rules.ROLE_CN[role]||{})[color] || '?';
+  /* 同名子挤在同一纵线时加「前/后」（红方越靠近对方越"前"，黑方反之）。
+     三步兵那种 ≥3 枚的情况，从前往后数一/二/三… */
+  var same = [];
+  for(var i=0;i<90;i++){
+    var q=board[i]; if(!q||q.color!==color) continue;
+    if((i%9)!==c0) continue;
+    var er = q.faceDown ? Rules.HOME[i] : q.role;
+    if(er!==role) continue;
+    same.push((i/9)|0);
+  }
+  var pre='';
+  if(same.length>=2){
+    same.sort(function(a,b){ return color==='red' ? b-a : a-b; });   /* 前 → 后 */
+    var k = same.indexOf(r0); if(k<0) k=0;
+    pre = (same.length===2) ? (k===0?'前':'后') : (MV_CN_NUM[k]||String(k+1));
+  }
+  var verb, tail;
+  if(r1===r0){ verb='平'; tail=mvNum(color, mvFile(color,c1)); }
+  else if(c1===c0){
+    var adv0 = color==='red' ? (r1-r0) : (r0-r1);
+    verb = adv0>0 ? '进' : '退';
+    tail = mvNum(color, Math.abs(r1-r0));
+  } else {
+    var adv1 = color==='red' ? (r1-r0) : (r0-r1);
+    verb = adv1>0 ? '进' : '退';
+    tail = mvNum(color, mvFile(color,c1));
+  }
+  return pre + cn + mvNum(color, mvFile(color,c0)) + verb + tail;
+}
+
+/* board 必须传【走子之前】的棋盘快照——走完之后 from 那格已经空了，读不到兵种。 */
+function pushMoveLog(board, from, to, color){
+  if(!G.mvLog) G.mvLog=[];
+  var txt = moveToChinese(board, from, to, color);
+  if(!txt) return;
+  G.mvLog.push({ color:color, txt:txt });
+  try{ log('I','记谱', { color:color, txt:txt }); }catch(e){}
+}
+
+function updateMoves(){
+  var box=document.getElementById('moves4'); if(!box) return;
+  if(!G.mvLog) G.mvLog=[];
+  /* 悔棋 / 新局都会让 G.history 变短，日志按它的长度截断即可，不用在每处重置点各写一遍。 */
+  var hn = (G.history&&G.history.length) || 0;
+  while(G.mvLog.length > hn) G.mvLog.pop();
+  box.innerHTML='';
+  var list = G.mvLog.slice(-4);          /* 只留最近四步 */
+  /* 联机模式不走 doMove/applyAi，日志恒为空；此时整块收掉，别白占一行高度。 */
+  box.style.display = list.length ? 'flex' : 'none';
+  if(list.length===0) return;
+  list.forEach(function(m){
+    box.appendChild(el('span','mv ' + (m.color==='red'?'red':'blk'), m.txt));
+  });
+}
+
 function updateCaps(){
   try{ updateScoreBar(); }catch(e){}
+  try{ updateMoves(); }catch(e){}
   var box=document.getElementById('caps'); if(!box) return;
   box.innerHTML='';
   var view = G.viewState || G.state; if(!view) return;
@@ -3972,9 +4205,11 @@ function infoBox(msg){
   return modalBox(msg, [ { txt:'知道了', pri:true } ]);
 }
 
+/* 0.0.8：走子反馈改语音播报。吃子时先一声 chi 提示、再念棋步本身；
+   翻子与普通走子都念棋步（棋步文本取自 pushMoveLog 刚记下的那条）。 */
 function feedbackMove(evt){
-  if(evt && evt.revealed){ Snd.reveal(); return; }
   if(evt && evt.captured){ Snd.capture(); return; }
+  if(evt && evt.revealed){ Snd.reveal(); return; }
   Snd.move();
 }
 
@@ -4205,16 +4440,6 @@ function bindEditDrag(box, mask){
   }
 }
 
-function countHiddenRole(color, role, excludeIdx){
-  var b = G.state && G.state.board; if(!b) return 0;
-  var n = 0;
-  for(var i=0;i<b.length;i++){
-    if(i===excludeIdx) continue;
-    var q = b[i];
-    if(q && q.faceDown && q.color===color && q.role===role) n++;
-  }
-  return n;
-}
 function findHiddenRoleIdx(color, role, excludeIdx){
   var b = G.state && G.state.board; if(!b) return -1;
   for(var i=0;i<b.length;i++){
@@ -4292,6 +4517,17 @@ btn.appendChild(el('span','pnum',''));
   mask.appendChild(box);
   host.appendChild(mask);
 bindEditDrag(box, mask);
+  /* 0.0.2（1A）：该兵种还剩几枚【没有公开身份】的（且不含本格自身）。
+     poolRemain 的口径是「总数 − 已公开」，已公开含三类：盘上明子、明着被吃的、
+     以及你在填暗子窗里告知过的暗子。暗着被吃且没告知的，身份从未公开，仍算在剩余里。
+     本格若是暗子且正好是这个兵种，它自己就在这份剩余里，要减掉——
+     这样显示的数字与守恒置换实际能换到的枚数一致（两者都指「别的」暗子）。 */
+  function remainOf(rr){
+    var n = Rules.poolRemain(G.state, color, rr);
+    var cur0 = G.state && G.state.board[idx];
+    if(cur0 && cur0.faceDown && cur0.color===color && cur0.role===rr) n -= 1;
+    return n<0 ? 0 : n;
+  }
   /* 三个开关 + 标题 + 底部提示的统一刷新点。凡是会改变外观的状态都走这里，
      避免「改了状态忘了重画」这类只改一半的 bug。 */
   function sync(){
@@ -4311,12 +4547,20 @@ bindEditDrag(box, mask);
     btns.forEach(function(btn){
       var rr = btn.getAttribute('data-role');
       btn.classList.toggle('on', selRole === rr);
+      /* 0.0.2（2A）：已无剩余的兵种置灰。当前高亮的那一枚不置灰——
+         点它是「熄灭」回到原样，属于撤销而不是新增，必须留着能点。 */
+      var rem0 = remainOf(rr);
+      btn.classList.toggle('off', rem0 <= 0 && selRole !== rr);
       drawPieceIcon(btn.querySelector('canvas'), { color:color, role:rr, faceDown:false }, 38);
       var pn = btn.querySelector('.pnum');
-      /* 2A：保留「暗 N」——数的是【棋盘上还盖着的】该兵种，跟守恒置换找的是同一批子，
-         「还剩几枚可换」看得准。填暗子窗的「剩 N」口径不同（含被吃未告知的），
-         两窗都是数字但服务的动作不同，硬统一口径会误导，故不合并。 */
-      if(pn) pn.textContent = '暗' + countHiddenRole(color, rr, idx);
+      /* 0.0.2（1A）：「暗 N」改按【真实剩余未公开】显示，不再数「盘上还盖着几格」。
+         为什么原口径是错的：程序开局 shuffle 一次发牌，每格藏什么当场定死；
+         只要用过改子，盘上暗子的身份与"公开过什么"就必然分叉。实测：
+           一匹马【暗着】被吃且未告知 + 另一格翻开成马
+             旧口径（数暗格） = 0   ← 剩下 14 个暗子里一枚马都没有，于是显示 0
+             poolRemain      = 1   ← 总数 2 只公开了 1 匹，被吃那匹身份没公开，还剩 1
+         用户看到 0 却照样能点马、还能改出第三个车，根子就在这个口径。 */
+      if(pn) pn.textContent = '暗' + rem0;
     });
     tipEl.textContent = isDark
       ? '暗子：6 个键全暗 = 还没定；点哪个哪个亮 = 定为它；再点一下熄灭。点 ✕ 才写入（按住空白处可拖开）'
@@ -4331,7 +4575,7 @@ bindEditDrag(box, mask);
     });
   });
   /* 0.0.1（1A）：点兵种【只切高亮】，不落盘；真正写入等点 ✕。
-     为什么必须改成这样：实测（_test039.js，真实 countHiddenRole / findHiddenRoleIdx）
+     为什么必须改成这样：实测（真实发牌 + findHiddenRoleIdx）
        初始 5:暗兵 10:暗兵 40:暗车 → 点车 → 改回兵
        结果 5:暗车 10:明兵 40:暗兵   ← idx5 的暗兵被换成暗车、idx40 的暗车被换成暗兵
      守恒置换每生效一次就动一枚【别的】暗子，改错再改回会触发两次置换，
@@ -4342,6 +4586,15 @@ bindEditDrag(box, mask);
     btn.addEventListener('click', function(e){
       e.stopPropagation();
       var rr = btn.getAttribute('data-role');
+      /* 0.0.2（2A）：这个兵种已经没有剩余（身份全公开），还去改就会超数——
+         守恒置换找不到暗子可换，会走兜底分支让该兵种 +1，场上就冒出第三个车。
+         这里直接拦下并说明原因。当前高亮的那枚放行（点它=熄灭撤销）。 */
+      if(remainOf(rr) <= 0 && selRole !== rr){
+        var cnrr = ((Rules.ROLE_CN||{})[rr]||{})[color] || rr;
+        toast(cnrr + '已全部公开，改不出来了');
+        log('T','改子窗:拦·无剩余', { i:idx, role:rr });
+        return;
+      }
       /* 再点同一个 = 熄灭。熄灭回到【原样】：
          明子 → 回到它本来的兵种（取消马就恢复成车高亮，正是要的效果）；
          暗子 → 回到全暗（base 为 null）。 */
@@ -4518,6 +4771,8 @@ function doMove(from, to){
   var legal = Rules.legalMoves(G.state, from);
   if(legal.indexOf(to)<0){ log('W','非法走法被拒绝',{from:from,to:to}); toast('非法走法'); return; }
   G.history.push(Rules.clone(G.state));
+  var _preBoard = G.history[G.history.length-1].board;   /* 走子前的快照，记谱要用 */
+  pushMoveLog(_preBoard, from, to, G.state.turn);
   var res = Rules.applyMove(G.state, from, to);
   G.state = res.state;
   G.sel=null; G.moves=[];
@@ -4731,6 +4986,8 @@ async function aiTurn(){
 
 function applyAi(from, to, fallback){
   G.history.push(Rules.clone(G.state));
+  var _preBoard = G.history[G.history.length-1].board;   /* 走子前的快照，记谱要用 */
+  pushMoveLog(_preBoard, from, to, G.state.turn);
   var res=Rules.applyMove(G.state, from, to);
   G.state=res.state;
   G.viewState=Rules.viewFor(G.state,G.humanColor);
